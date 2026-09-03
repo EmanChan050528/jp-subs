@@ -46,7 +46,7 @@ Latency is no longer a per-utterance figure. Two targets replace it:
 
 The design that satisfies these is **translate-ahead-of-playhead**: translate the first couple of minutes, start rendering, and keep working forward faster than real time. Full-video-then-play is simpler but makes the user wait; progressive is barely harder and feels instant.
 
-- [ ] Decide: progressive (translate ahead of playhead) or blocking (translate all, then play)
+- [ ] Decide: progressive (translate ahead of playhead) or blocking (translate all, then play). Local Qwen inference speed may settle this for us — measure before choosing.
 - [ ] Handle a seek past the translated region — show a brief "translating…" state rather than nothing
 
 ### 0.4 Cost
@@ -218,7 +218,14 @@ These remain the top quality risks.
 - [ ] Verify with `usage.cache_read_input_tokens`; if it is zero across chunks, something in the prefix is varying
 - [ ] Continuous chunk requests keep the default 5-minute TTL warm, so the 1.25× write is paid once per video and the 1-hour TTL buys nothing
 
-### 3.5 Batch API
+### 3.5 Whole-transcript single pass
+
+Gemini's context window fits the entire 7h53m transcript (~75,000 Japanese characters) in one request. That would collapse ~570 chunked requests into one, which also suits a free-tier per-day request cap.
+
+- [ ] Test whole-transcript against chunked-with-overlap on the eval fixtures
+- [ ] Not available on local Qwen at this hardware — the KV cache for a full 256K context will not fit in 12 GB VRAM, so the local path stays chunked
+
+### 3.6 Batch API
 
 Chunk translation is embarrassingly parallel and not latency-critical for the blocking design — a natural fit for the Batch API at 50% cost.
 
@@ -269,8 +276,10 @@ Chunk translation is embarrassingly parallel and not latency-critical for the bl
 
 - [ ] Token accounting per video; validate against the §0.4 prediction
 - [ ] Show estimated cost **before** translating a long archive — an eight-hour VOD is not a nine-cent anime episode
-- [ ] Model selector: Haiku 4.5 / Sonnet 5 / Opus 5, with per-video cost shown
-- [x] ~~Local model fallback (Gemma, Qwen)~~ — dropped. It existed to cap cost under the live design at $2–3/hour; at $0.04–0.22 per episode there is nothing left to cap, and a second translation backend would double the prompt-tuning and evaluation work for no benefit.
+- [ ] Model selector, with per-video cost shown where the backend charges per token
+- [ ] **Backend decided: Gemini API first, local Qwen3.5 as backup.** The Claude API is billed separately from a Claude Pro subscription and was not purchased. Setup instructions: [docs/translation-backends.md](docs/translation-backends.md).
+- [ ] This reverses the earlier decision to drop a second backend. That reasoning was cost-based and is now moot — the constraint is **access**, not price. Two real backends justify a thin seam between "produce translation units" and "call a model"; keep it to one function, not a plugin architecture.
+- [ ] The quality result in [eval/README.md](eval/README.md) came from the **two-pass method**, not from any particular model. Re-run the fixtures against whichever backend ships before trusting it.
 
 ### 6.1 Degradation behaviour
 
