@@ -8,6 +8,22 @@ The reference set the design doc (§7) calls for. Built during the caption-acces
 |---|---|
 | `fixtures/EmteTL5Ij8g_30-40min.ja.json` | Japanese source. YouTube auto-generated ASR track, 131 cues from a 10-minute window (30:00–40:00) of a 7h53m VTuber archive. 1,526 Japanese characters. |
 | `fixtures/EmteTL5Ij8g_30-40min.youtube-en.json` | **Baseline competitor.** YouTube's own auto-translated English for the identical window, aligned 1:1 by `t_ms`. |
+| `fixtures/NSY6YHXbxtA_full.ja.json` | Japanese source, whole video (21:52, 202 cues). Produced by the extension itself, not by hand. A VTuber reaction compilation over game dialogue. |
+
+### Cue granularity varies a lot between videos
+
+Both Japanese fixtures are `kind=asr`, but they are segmented completely differently:
+
+| | `EmteTL5Ij8g` | `NSY6YHXbxtA` |
+|---|---|---|
+| Mean chars per cue | 6.6 | 16.0 |
+| Max chars per cue | ~20 | 75 |
+| Shape | scrolling fragments, break mid-clause | mostly complete, punctuated sentences |
+
+**Do not assume fragments.** Stage 2 re-segmentation has to cope with both a
+stream of 6-character scraps and cues that are already whole sentences — and it
+must not mangle the latter while trying to repair the former. Keep both
+fixtures in the regression set for exactly this reason.
 
 Content profile: solo VTuber gameplay stream (不知火フレア / Hololive), unscripted casual speech with heavy pro-drop, fillers, and domain vocabulary. This is the hard profile, not the easy one.
 

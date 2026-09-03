@@ -89,15 +89,6 @@ Test against these, in order:
 
 ## Known gaps
 
-- [ ] **The MV3 packaging is untested.** The core path is verified (below), but
-      the extension has not been loaded into Chrome, so the manifest, the
-      `world: "MAIN"` declaration, the popup wiring and the download have not
-      been exercised. Expect to fix something on first load.
-- [ ] **The `document_start` hook is unproven.** A hook installed *after* page
-      load demonstrably fails — the player caches its own `fetch` first. That is
-      why `world: "MAIN"` + `run_at: "document_start"` is specified, but the
-      early-hook path itself has not been observed working. If extraction never
-      captures a URL, this is the first thing to suspect.
 - [ ] **SPA navigation is only partly handled.** `yt-navigate-finish` clears the
       captured URLs, but this has not been tested against a real
       video-to-video navigation. If extraction misbehaves after navigating,
@@ -124,4 +115,14 @@ verbatim in the page:
 | Empty-200 guard on an un-rewritten URL | raises, as intended |
 | Output shape | matches `../eval/fixtures/*.ja.json` |
 
-Not yet verified: the MV3 packaging and the `document_start` hook (see above).
+**First real run, 2026-09-03 — worked on the first try.** Loaded unpacked in
+Chrome, extracted `NSY6YHXbxtA` (21:52) via the popup button: 202 cues, 100%
+coverage, monotonic timestamps, no empty strings, schema identical to the
+existing fixtures. Saved as `../eval/fixtures/NSY6YHXbxtA_full.ja.json`.
+
+That clears the two gaps that could not be checked from outside a browser:
+
+- **MV3 packaging works** — manifest, `world: "MAIN"`, popup wiring, download.
+- **The `document_start` hook works.** This was the main risk. A hook installed
+  after page load provably fails, because the player caches its own `fetch`
+  first; a successful extraction proves the early hook beat it.
