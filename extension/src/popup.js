@@ -152,7 +152,8 @@ async function refreshRunState() {
     setProgress(state.done || 0, state.total || 0);
     const phase =
       state.phase === "translating" && state.total
-        ? `Translating chunk ${state.done}/${state.total}`
+        ? `Translating chunk ${state.done}/${state.total}` +
+          (state.eta ? `\n~${state.eta} remaining` : "")
         : state.phase === "analysing"
           ? "Reading the whole transcript…"
           : "Getting transcript…";

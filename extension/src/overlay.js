@@ -87,15 +87,18 @@ class Overlay {
           max-width: 100%;
         }
         .cue:empty, .wrap.hidden { display: none; }
+        /* Top-right, clear of the subtitle band at the bottom and of the
+           title overlay YouTube draws top-left on hover. */
         .status {
           position: absolute;
-          left: 50%; transform: translateX(-50%);
-          bottom: 8%;
-          font: 500 13px/1.4 "Segoe UI", system-ui, sans-serif;
+          top: 12px; right: 12px;
+          max-width: 40%;
+          font: 500 12px/1.4 "Segoe UI", system-ui, sans-serif;
           color: #fff;
-          background: rgba(0, 0, 0, 0.72);
-          padding: 6px 12px;
+          background: rgba(0, 0, 0, 0.66);
+          padding: 5px 10px;
           border-radius: 4px;
+          pointer-events: none;
         }
         .status:empty { display: none; }
       </style>

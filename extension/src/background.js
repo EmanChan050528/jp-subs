@@ -46,6 +46,14 @@ function send(tabId, message) {
   });
 }
 
+/** "1h 5m", "2m 10s", "45s" — coarse on purpose, an ETA implies less than it knows. */
+function formatDuration(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s >= 3600) return `${Math.floor(s / 3600)}h ${Math.round((s % 3600) / 60)}m`;
+  if (s >= 60) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${s}s`;
+}
+
 /** Shape the pipeline's parallel arrays into what the overlay consumes. */
 function toOverlayUnits(units, translations) {
   return units
@@ -78,21 +86,35 @@ async function translateTab(tabId) {
   const glossary = await analyse(units, backend, transcript, log);
 
   setState(tabId, { phase: "translating" });
+  const startedAt = Date.now();
+
   const { failures } = await translateUnits(
     units, glossary, backend, config, log,
     (partial, done, total) => {
-      setState(tabId, { done, total });
+      // Chunks vary in length, so estimate from the mean so far rather than
+      // the last one. Long videos are exactly where an ETA earns its place.
+      const elapsed = Date.now() - startedAt;
+      const remaining = done > 0 ? (elapsed / done) * (total - done) : null;
+      const eta = remaining === null ? null : formatDuration(remaining);
+
+      setState(tabId, { done, total, eta });
+      console.debug(`[jpsub] sending ${done}/${total}${eta ? `, ~${eta} left` : ""}`);
+
       // Push partial results so subtitles appear before the whole video is done.
-      console.debug(`[jpsub] sending ${done}/${total}`);
       send(tabId, {
         type: "overlay:units",
         units: toOverlayUnits(units, partial),
-        status: done < total ? `Translating… ${done}/${total}` : "",
+        status: done < total
+          ? `Translating ${done}/${total}${eta ? ` · ~${eta} left` : ""}`
+          : "",
       });
     }
   );
 
-  setState(tabId, { running: false, phase: "done", failures });
+  setState(tabId, {
+    running: false, phase: "done", failures, eta: null,
+    tookMs: Date.now() - startedAt,
+  });
   await send(tabId, { type: "overlay:status", text: "" });
   return { units: units.length, failures };
 }
