@@ -114,6 +114,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true; // async
   }
 
+  if (msg?.type === "models:list") {
+    settings()
+      .then(async (config) => {
+        const res = await fetch(`${config.host}/api/tags`);
+        if (!res.ok) throw new Error(`Ollama returned HTTP ${res.status}`);
+        const data = await res.json();
+        const names = (data.models || []).map((m) => m.name).sort();
+        sendResponse({ ok: true, data: { models: names, selected: config.model } });
+      })
+      .catch((err) =>
+        sendResponse({ ok: false, error: `Could not list models: ${err.message}` })
+      );
+    return true; // async
+  }
+
   if (msg?.type === "run:status") {
     sendResponse({ ok: true, data: runs.get(msg.tabId) || null });
     return false;

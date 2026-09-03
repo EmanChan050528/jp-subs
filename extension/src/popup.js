@@ -69,18 +69,70 @@ async function toTab(type) {
 // ------------------------------------------------------------------ settings
 
 async function loadSettings() {
-  const s = await chrome.storage.local.get(["model", "host"]);
-  $("model").value = s.model || "";
+  const s = await chrome.storage.local.get(["host"]);
   $("host").value = s.host || "";
 }
 
-for (const key of ["model", "host"]) {
-  $(key).addEventListener("change", async (e) => {
-    const value = e.target.value.trim();
-    if (value) await chrome.storage.local.set({ [key]: value });
-    else await chrome.storage.local.remove(key);
-  });
+/**
+ * The model list comes from the worker, not from here: only the extension's
+ * own context holds the localhost host permission.
+ *
+ * Worth offering because model choice is the only real speed lever. Chunk size
+ * and context width were measured making almost no difference (14.8 s vs
+ * 14.0 s) — the cost is generating output tokens, which chunking does not
+ * change.
+ */
+async function loadModels() {
+  const select = $("model");
+  const res = await chrome.runtime.sendMessage({ type: "models:list" });
+
+  if (!res?.ok) {
+    select.innerHTML = "";
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "(could not reach Ollama)";
+    select.append(opt);
+    $("modelNote").textContent = res?.error || "Ollama unreachable.";
+    return;
+  }
+
+  const { models, selected } = res.data;
+  select.innerHTML = "";
+  if (!models.length) {
+    const opt = document.createElement("option");
+    opt.textContent = "(no models installed)";
+    select.append(opt);
+    $("modelNote").textContent = "Pull one first, e.g. ollama pull qwen3.5:9b";
+    return;
+  }
+
+  for (const name of models) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    if (name === selected) opt.selected = true;
+    select.append(opt);
+  }
+
+  // The stored model may have been removed since it was chosen.
+  if (!models.includes(selected)) {
+    $("modelNote").textContent = `"${selected}" is not installed; pick another.`;
+  } else {
+    $("modelNote").textContent = "Smaller models are faster and less accurate.";
+  }
 }
+
+$("model").addEventListener("change", async (e) => {
+  const value = e.target.value.trim();
+  if (value) await chrome.storage.local.set({ model: value });
+});
+
+$("host").addEventListener("change", async (e) => {
+  const value = e.target.value.trim();
+  if (value) await chrome.storage.local.set({ host: value });
+  else await chrome.storage.local.remove("host");
+  await loadModels();
+});
 
 // -------------------------------------------------------------------- status
 
@@ -141,6 +193,7 @@ async function refreshRunState() {
 
 async function init() {
   await loadSettings();
+  loadModels();   // not awaited: never let a slow Ollama hold up the UI
 
   const tab = await activeTab();
   tabId = tab?.id;

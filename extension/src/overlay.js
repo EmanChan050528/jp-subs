@@ -11,6 +11,29 @@
 
 const HOST_ID = "jpsub-overlay-host";
 
+/** Shortest time any line may stay on screen, however brief its source cue. */
+const MIN_DWELL_MS = 500;
+
+/** Longest a line may be held open by the reading-speed rule. */
+const MAX_DWELL_MS = 6000;
+
+/** Extra time a line lingers past its cue's end before blanking. */
+const END_GRACE_MS = 400;
+
+/**
+ * Reading speed, characters per second (design §5.2).
+ *
+ * A flat minimum is not enough on its own: the complaint is that *long* lines
+ * vanish instantly, and a 60-character sentence needs about three seconds
+ * whatever its source cue was. Short lines still get MIN_DWELL_MS.
+ */
+const READING_CHARS_PER_SEC = 20;
+
+function dwellFor(text) {
+  const needed = (text.length / READING_CHARS_PER_SEC) * 1000;
+  return Math.min(MAX_DWELL_MS, Math.max(MIN_DWELL_MS, needed));
+}
+
 class Overlay {
   constructor() {
     this.units = [];          // [{ t_ms, end_ms, en }], sorted by t_ms
@@ -91,7 +114,17 @@ class Overlay {
   setUnits(units) {
     this.units = (units || [])
       .filter((u) => u.en && u.en.trim())
-      .sort((a, b) => a.t_ms - b.t_ms);
+      .sort((a, b) => a.t_ms - b.t_ms)
+      .map((u) => ({
+        ...u,
+        // How long this line may stay up: whichever is longer, its own cue
+        // plus grace, or enough time to actually read it.
+        //
+        // Overrunning the next unit is harmless — indexAt picks the latest
+        // unit whose start has passed, so the next line takes over regardless.
+        // This only extends lines that would otherwise hit a gap.
+        until_ms: Math.max(u.end_ms + END_GRACE_MS, u.t_ms + dwellFor(u.en)),
+      }));
     this.lastIndex = -1;
     this.setStatus("");
     console.debug(`[jpsub] overlay received ${this.units.length} units`);
@@ -146,7 +179,7 @@ class Overlay {
     // alone was a bug: within one unit's index the expiry never got
     // re-evaluated, so a line stayed on screen through the entire gap until
     // the next unit began.
-    const text = unit && ms <= unit.end_ms + 400 ? unit.en : "";
+    const text = unit && ms <= unit.until_ms ? unit.en : "";
     if (text !== this.box.textContent) this.box.textContent = text;
   };
 

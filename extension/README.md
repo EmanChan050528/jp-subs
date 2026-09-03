@@ -42,7 +42,14 @@ Click the toolbar icon. The popup reports what it found, then:
 - **Save transcript only** — the build step 1 behaviour: writes the Japanese
   `.json` to your downloads and does not call a model.
 
-Model and host are configurable under **Settings** in the popup.
+**Settings** lets you pick any model Ollama already has installed (the list is
+fetched live) and change the host.
+
+Model choice is the only real speed lever. Measured on a 78-unit fixture with
+`qwen3.5:9b`: chunk size and context width barely matter — 20 units/chunk took
+14.8 s and 40 units/chunk with narrower context took 14.0 s — because the cost
+is generating output tokens, which chunking does not change. Pass 2 is ~80% of
+the total.
 
 Once a video is translated the primary button reads **Subtitles applied** and
 is disabled — a second run on the same video buys nothing and costs minutes of

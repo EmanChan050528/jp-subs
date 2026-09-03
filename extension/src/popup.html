@@ -53,7 +53,8 @@
     details { margin-top: 10px; font-size: 12px; }
     details summary { cursor: pointer; opacity: 0.7; }
     label { display: block; margin-top: 6px; opacity: 0.7; }
-    input {
+    .note { margin-top: 4px; font-size: 11px; opacity: 0.6; }
+    select, input {
       width: 100%;
       box-sizing: border-box;
       padding: 5px 6px;
@@ -80,7 +81,8 @@
   <details>
     <summary>Settings</summary>
     <label for="model">Ollama model</label>
-    <input id="model" placeholder="qwen3.5:9b" />
+    <select id="model"><option value="">(loading…)</option></select>
+    <div id="modelNote" class="note"></div>
     <label for="host">Ollama host</label>
     <input id="host" placeholder="http://localhost:11434" />
   </details>

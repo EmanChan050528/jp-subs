@@ -37,7 +37,13 @@ Guidance:
 - "terms" is for words whose ordinary dictionary sense would be wrong here. For example 配信 is "stream", not "delivery", when the speaker is a streamer.
 - "asr_corrections" is for speech-recognition errors you can identify from context. Japanese homophones are the usual cause. Only list ones you are confident about.
 - If a category is empty, use an empty object. Do not invent entries.
-- Output only the JSON object. No preamble, no code fence.`;
+- Output only the JSON object. No preamble, no code fence.
+
+Hard limits — a reply that breaks these is useless:
+- **This is a reference sheet, NOT a translation.** Do not translate the transcript. Do not add an entry per line.
+- Keys in "names", "terms" and "asr_corrections" must be single words or short phrases. Never a whole sentence or a whole line of dialogue.
+- At most 12 entries in "names", 15 in "terms", 10 in "asr_corrections". Choose the ones that matter most and leave the rest out.
+- Keep the whole reply under 2000 characters.`;
 }
 
 /**
