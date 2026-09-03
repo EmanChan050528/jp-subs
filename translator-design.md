@@ -69,7 +69,7 @@ Costs collapse under VOD for three compounding reasons: the caption track makes 
 
 Halve these with the Batch API (see §3.5).
 
-**The earlier estimates were roughly 2× too pessimistic.** They assumed ~25 tokens per subtitle line; real auto-caption cues average **6.6 characters**, because they are scrolling fragments rather than sentences. Even the worst case — Opus 5 on an eight-hour archive — lands at $1.79, and every model sits inside the ceiling below.
+**The earlier estimates were roughly 2× too pessimistic.** They assumed ~25 tokens per subtitle line; the auto-caption cues on that video average **6.6 characters**, because they are scrolling fragments rather than sentences (other videos segment more coarsely — §1.3). Even the worst case — Opus 5 on an eight-hour archive — lands at $1.79, and every model sits inside the ceiling below.
 
 - [ ] These are estimates from a measured character count, not from `count_tokens`. Verify against real `usage` figures in build step 2.
 
@@ -130,7 +130,7 @@ Measured on a 7h53m VTuber archive (`EmteTL5Ij8g`, 28,382 s):
 
 - [x] **One request returns the entire track**, regardless of length. No pagination, no time-range parameters. Simplifies Stage 4 considerably.
 - [x] ~~Auto-generated Japanese has no punctuation~~ — **wrong, and now corrected.** YouTube's Japanese ASR punctuates. The punctuation-restoration pre-pass previously planned for §3.1 is **not needed**.
-- [ ] **Cues still break mid-clause** — average cue is ~6.6 characters, a scrolling fragment rather than a sentence (`"でももうに"` / `"もうなんか10年前の話だから。いや、"`). Stage 2 re-segmentation is still required, but it can now split on punctuation rather than having to infer boundaries.
+- [ ] **Cue granularity varies widely between videos, and both extremes are `kind=asr`.** On the 7h53m archive the mean cue is ~6.6 characters — scrolling fragments that break mid-clause (`"でももうに"`). On a 21:52 clip extracted later the mean is 16.0, the maximum is 75, and cues are mostly complete punctuated sentences. Stage 2 must handle both, and must not mangle already-whole sentences while repairing fragments. Both cases are kept as regression fixtures in `eval/fixtures/`.
 
 ### 1.4 Track availability — measured
 
@@ -172,7 +172,7 @@ Measured on a 7h53m VTuber archive (`EmteTL5Ij8g`, 28,382 s):
 ## Stage 2 — Document Preparation
 
 - [ ] Normalise all three tiers into one internal format: a list of `{start, end, text}` cues
-- [ ] **Re-segment into translation units.** Caption cues are timed for reading, not for grammar; a Japanese clause routinely spans two cues. Merge cues into complete sentences before translation, and keep a mapping back to the original timings.
+- [ ] **Re-segment into translation units.** Caption cues are timed for reading, not for grammar; on fragment-style videos a Japanese clause routinely spans two cues. Merge into complete sentences before translation and keep a mapping back to the original timings — but detect the case where cues are *already* sentences and leave those alone (§1.3).
 - [ ] Restore punctuation and sentence boundaries for Tier 2 input (§1.2)
 - [ ] Chunk into requests: ~20 lines per request with ~10 lines of preceding overlap for context
 - [ ] Decide chunk boundaries on sentence boundaries, never mid-clause
