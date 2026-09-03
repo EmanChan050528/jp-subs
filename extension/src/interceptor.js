@@ -184,7 +184,14 @@
     return JSON.parse(body);
   }
 
-  /** json3 -> the flat cue list the rest of the pipeline expects. */
+  /**
+   * json3 -> the flat cue list the rest of the pipeline expects.
+   *
+   * `segs` carries YouTube's per-word timings (`tOffsetMs`, relative to the
+   * event start) converted to absolute ms. Roughly half of all cues have them,
+   * and they let segmentation place a sentence break at a real timestamp
+   * instead of estimating one from character counts.
+   */
   function toCues(json3) {
     return (json3.events || [])
       .filter((e) => e.segs)
@@ -192,6 +199,10 @@
         t_ms: e.tStartMs,
         dur_ms: e.dDurationMs,
         ja: e.segs.map((s) => s.utf8 || "").join("").replace(/\n/g, " ").trim(),
+        segs: e.segs.map((s) => ({
+          t_ms: e.tStartMs + (s.tOffsetMs || 0),
+          text: (s.utf8 || "").replace(/\n/g, " "),
+        })),
       }))
       .filter((c) => c.ja);
   }

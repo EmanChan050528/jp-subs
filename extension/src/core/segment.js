@@ -31,31 +31,85 @@ export const DEFAULTS = {
 };
 
 /**
- * Explode cues into sentence pieces, giving each piece a share of its cue's
- * time proportional to its length. Approximate, but the alternative is one
- * subtitle holding four sentences.
+ * Expand a cue into per-character timestamps using YouTube's word-level
+ * `segs`. Returns null when the cue has none, which is about half of them.
+ */
+function charTimes(cue) {
+  if (!Array.isArray(cue.segs) || !cue.segs.length) return null;
+  const chars = [];
+  for (const seg of cue.segs) {
+    const text = seg.text || "";
+    for (const ch of text) chars.push({ ch, t_ms: seg.t_ms });
+  }
+  return chars.length ? chars : null;
+}
+
+/**
+ * Explode cues into sentence pieces.
+ *
+ * Where YouTube gives word-level timings, a piece starts at the real timestamp
+ * of its first character — no estimation at all. Where it does not, the start
+ * is still apportioned by character count (it has to be, or several pieces
+ * would share a start and only the last would ever display), but the END is
+ * anchored to the cue's own end so that nothing expires before the speech in
+ * that cue has finished.
  */
 function toPieces(cues, dropTagOnlyCues) {
   const pieces = [];
 
   cues.forEach((cue, index) => {
-    const text = (cue.ja || "").trim();
-    if (!text) return;
-    if (dropTagOnlyCues && TAG_ONLY.test(text)) return;
+    const cueText = (cue.ja || "").trim();
+    if (!cueText) return;
+    if (dropTagOnlyCues && TAG_ONLY.test(cueText)) return;
 
-    const parts = text.split(SENTENCE_SPLIT).map((p) => p.trim()).filter(Boolean);
+    const cueEnd = cue.t_ms + (cue.dur_ms || 0);
+    const timed = charTimes(cue);
+
+    if (timed) {
+      // Walk the characters, closing a piece at sentence-final punctuation.
+      // Every boundary lands on a timestamp YouTube actually reported.
+      let buf = "";
+      let startMs = null;
+      const flushPiece = (endMs) => {
+        const text = buf.trim();
+        buf = "";
+        if (!text) { startMs = null; return; }
+        pieces.push({
+          text,
+          start_ms: startMs ?? cue.t_ms,
+          end_ms: Math.max(endMs, (startMs ?? cue.t_ms) + 1),
+          cue_index: index,
+          endsSentence: SENTENCE_END.test(text),
+        });
+        startMs = null;
+      };
+
+      for (let i = 0; i < timed.length; i++) {
+        if (buf === "" && timed[i].ch.trim()) startMs = timed[i].t_ms;
+        buf += timed[i].ch;
+        if (SENTENCE_END.test(buf)) {
+          // End at the next character's timestamp, i.e. when the next word
+          // actually begins; otherwise the cue's own end.
+          flushPiece(i + 1 < timed.length ? timed[i + 1].t_ms : cueEnd);
+        }
+      }
+      flushPiece(cueEnd);
+      return;
+    }
+
+    // No word timings: apportion starts, but anchor every end to the cue end.
+    const parts = cueText.split(SENTENCE_SPLIT).map((p) => p.trim()).filter(Boolean);
     const total = parts.reduce((n, p) => n + p.length, 0) || 1;
     const duration = cue.dur_ms || 0;
 
     let offset = 0;
     for (const part of parts) {
-      const share = part.length / total;
       const start = cue.t_ms + Math.round(duration * offset);
-      offset += share;
+      offset += part.length / total;
       pieces.push({
         text: part,
         start_ms: start,
-        end_ms: cue.t_ms + Math.round(duration * offset),
+        end_ms: cueEnd,
         cue_index: index,
         endsSentence: SENTENCE_END.test(part),
       });

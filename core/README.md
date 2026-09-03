@@ -62,9 +62,22 @@ Cue granularity varies enormously between videos, even within `kind=asr`:
 | Shape | scrolling fragments, break mid-clause | several whole sentences per cue |
 
 These need opposite treatment, so `segment.js` works at sentence level rather
-than cue level: every cue is exploded into sentence pieces (each taking a share
-of its cue's time proportional to its length), then pieces accumulate into units
-until sentence-final punctuation, a 2 s silence, or a 64-character cap.
+than cue level: every cue is exploded into sentence pieces, then pieces
+accumulate into units until sentence-final punctuation, a 2 s silence, or a
+64-character cap.
+
+**Sentence breaks land on real timestamps.** YouTube's json3 carries word-level
+timings (`tOffsetMs` per segment) on roughly half of all cues, so a piece starts
+at the actual time of its first character. Where a cue has no word timings the
+start is still apportioned by character count — several pieces cannot share a
+start, or only the last would ever display — but the end is anchored to the
+cue's own end so nothing expires before the speech does.
+
+This matters more than it sounds. Measured on the 131-cue fixture, switching
+from estimated to real timings moved **22 of 78 unit starts, the worst by
+4.3 seconds**, and every correction was negative: the character-count estimate
+ran consistently late, because it assumes an even speaking rate and speech has
+pauses.
 
 One rule, both shapes. Measured result: 131 cues → 78 units on the fragmented
 video (merging), 202 cues → 235 units on the sentence-dense one (splitting).
