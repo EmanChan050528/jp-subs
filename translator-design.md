@@ -2,7 +2,7 @@
 
 A browser extension that takes a YouTube video, obtains a Japanese transcript, translates it with the Claude API, and renders English subtitles over the player.
 
-**Scope note:** this is the VOD-only design. Live streams are deferred — the real-time pipeline is preserved in [Appendix A](#appendix-a--deferred-live-stream-pipeline) so it can be picked up later.
+**Scope:** YouTube VOD, and nothing else. Not live streams (the real-time pipeline is preserved in [Appendix A](#appendix-a--deferred-live-stream-pipeline) rather than kept in the design), not other video sites, not local files, not microphone input. Build directly against YouTube — do not add abstraction layers for sources that are not in scope.
 
 **Key constraint:** the Claude API does not accept audio input. Where YouTube already provides a Japanese caption track there is no speech recognition stage at all; where it does not, ASR is a fallback that runs offline over the audio.
 
@@ -14,15 +14,15 @@ A browser extension that takes a YouTube video, obtains a Japanese transcript, t
 
 ### 0.1 Languages
 
-- **Source: Japanese.** Chinese and Korean are possible later additions.
+- **Source: Japanese.** Chinese and Korean were raised as possible later additions, but nothing in this design should be built to accommodate them — the §3.3 handling is Japanese-specific and would not transfer anyway. Add them, if ever, as a separate prompt and a separate evaluation.
 - **Target: English.**
-- [ ] Keep the translation system prompt per-source-language (the JA prompt will not transfer to CN — see §3.3)
 
 ### 0.2 Platform and content
 
 - **Browser extension (Chrome, Manifest V3).**
-- **YouTube VOD only** — archived anime and VTuber stream archives. Live streams deferred; non-YouTube audio deferred.
-- [ ] Keep transcript acquisition behind an interface so a second source can be added without touching the rest of the pipeline
+- **YouTube VOD only** — archived anime and VTuber stream archives.
+
+Write against YouTube directly. A generic "transcript source" interface, a pluggable player adapter, or a site-agnostic overlay would all be speculative generality here: there is one host page, one player, and one caption format. Couple to them and keep the code small.
 
 Because everything runs offline relative to playback, the MV3 service-worker lifetime problem mostly disappears: work is request-shaped and short-lived rather than a persistent capture session. Confirm this holds for long VTuber archives, where a single video's translation may take minutes.
 
@@ -88,7 +88,7 @@ The best case: accurate text, punctuated, sensibly segmented, with timings alrea
 
 - [ ] Detect whether the video has a Japanese track, and whether it is author-supplied or auto-generated
 - [ ] **Access is the hard part.** The YouTube Data API's `captions.download` only works for videos the authenticated user *owns*, so it is unusable for third-party videos. The practical route is the same `timedtext` endpoint the player itself uses — which is undocumented and can change without notice.
-- [ ] Treat this as a **fragility risk, not a solved problem**: wrap it behind an interface, detect failure explicitly, and fall through to Tier 3 rather than breaking.
+- [ ] Treat this as a **fragility risk, not a solved problem**: isolate it in one module, detect failure explicitly, and fall through to Tier 3 rather than breaking. The isolation is to contain YouTube changing the endpoint, not to support other sites.
 
 ### 1.2 Tier 2 — Auto-generated Japanese caption track
 
@@ -227,7 +227,7 @@ Chunk translation is embarrassingly parallel and not latency-critical for the bl
 - [ ] Token accounting per video; validate against the §0.4 prediction
 - [ ] Show estimated cost **before** translating a long archive — a 4-hour VTuber VOD is not a 22-cent anime episode
 - [ ] Model selector: Haiku 4.5 / Sonnet 5 / Opus 5, with per-video cost shown
-- [ ] Local model fallback (Gemma, Qwen) behind the same interface
+- [x] ~~Local model fallback (Gemma, Qwen)~~ — dropped. It existed to cap cost under the live design at $2–3/hour; at $0.04–0.22 per episode there is nothing left to cap, and a second translation backend would double the prompt-tuning and evaluation work for no benefit.
 
 ### 6.1 Degradation behaviour
 
@@ -255,12 +255,12 @@ Chunk translation is embarrassingly parallel and not latency-critical for the bl
 
 ## Build Order
 
-1. **CLI, file-based** — a Japanese `.srt` in, an English `.srt` out. No extension, no YouTube, no player. Get §3 right here: the two-pass design, the prompt, and the Japanese handling in §3.3. Build the Stage 7 reference set in this step.
+1. **CLI, file-based** — a Japanese `.srt` in, an English `.srt` out. A development scaffold for getting §3 right (the two-pass design, the prompt, the Japanese handling in §3.3) without YouTube in the loop, not a mode that ships. Build the Stage 7 reference set in this step.
 2. **Transcript acquisition** — add Tier 1/2 fetching so a YouTube URL in produces an English `.srt` out. Still a CLI. Add Tier 3 only if the coverage gap demands it.
 3. **Extension** — wrap step 2 in the extension, render the result over the player, handle seeking.
 4. **Pipelining and polish** — ahead-of-playhead scheduling, result caching, cost display, batch mode.
 
-Steps 1 and 2 are each independently useful, which is the main reason to prefer VOD first.
+Step 2 is the first genuinely useful artifact, and it settles the §1.1 risk before any extension code exists.
 
 ---
 
