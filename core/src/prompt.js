@@ -43,15 +43,18 @@ Guidance:
 /**
  * Pass 2. Translate one chunk, with surrounding units available as context.
  */
-export function translationPrompt(chunk, glossary) {
+export function translationPrompt(chunk, glossary, lines = null) {
   const context = (units, label) =>
     units.length
       ? `${label}\n${units.map((u) => u.ja).join("\n")}\n`
       : "";
 
-  const numbered = chunk.target
-    .map((u, i) => `${chunk.firstUnit + i + 1}\t${u.ja}`)
-    .join("\n");
+  // `lines` carries explicit numbers, so a retry can resend an arbitrary
+  // subset of a chunk without the numbering drifting.
+  const items =
+    lines || chunk.target.map((u, i) => ({ n: chunk.firstUnit + i + 1, ja: u.ja }));
+
+  const numbered = items.map((it) => `${it.n}\t${it.ja}`).join("\n");
 
   return `Translate Japanese video dialogue into English subtitles.
 
@@ -77,7 +80,7 @@ Rules:
 
 Return JSON mapping each line number to its English translation, and nothing else:
 
-{"${chunk.firstUnit + 1}": "…", "${chunk.firstUnit + 2}": "…"}
+{${items.slice(0, 2).map((it) => `"${it.n}": "..."`).join(", ")}}
 
 Every number listed above must appear exactly once. No preamble, no code fence.`;
 }

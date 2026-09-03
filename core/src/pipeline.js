@@ -45,32 +45,55 @@ export async function translateUnits(units, glossary, backend, options = {}, log
   const translations = new Array(units.length).fill("");
   const failures = [];
 
+  /** Ask for a specific set of lines; write whatever comes back. */
+  const request = async (c, lines, label) => {
+    const raw = await backend(translationPrompt(c, glossary, lines), { json: true });
+    const map = parseJson(raw, label);
+    let filled = 0;
+    for (const line of lines) {
+      const value = map[String(line.n)];
+      if (typeof value === "string" && value.trim()) {
+        translations[line.n - 1] = value.trim();
+        filled += 1;
+      }
+    }
+    return filled;
+  };
+
+  /** Lines in this chunk that still have no translation. */
+  const outstanding = (c) =>
+    c.target
+      .map((u, i) => ({ n: c.firstUnit + i + 1, ja: u.ja }))
+      .filter((line) => !translations[line.n - 1]);
+
   for (const c of chunks) {
     const label = `chunk ${c.index + 1}/${chunks.length}`;
+    const total = c.target.length;
+
     try {
-      const raw = await backend(translationPrompt(c, glossary), { json: true });
-      const map = parseJson(raw, label);
-
-      let filled = 0;
-      c.target.forEach((_, i) => {
-        const unitIndex = c.firstUnit + i;
-        const value = map[String(unitIndex + 1)];
-        if (typeof value === "string" && value.trim()) {
-          translations[unitIndex] = value.trim();
-          filled += 1;
-        }
-      });
-
-      // A model that answers with the wrong keys produces a chunk of blank
-      // subtitles. Surface it rather than shipping gaps silently.
-      if (filled < c.target.length) {
-        failures.push(`${label}: ${c.target.length - filled} of ${c.target.length} lines missing`);
-      }
-      log(`${label}: ${filled}/${c.target.length} lines`);
+      await request(c, outstanding(c), label);
     } catch (err) {
-      failures.push(`${label}: ${err.message}`);
-      log(`${label}: FAILED — ${err.message}`);
+      log(`${label}: ${err.message}`);
     }
+
+    // Models drop keys from long JSON objects. Re-ask for only the missing
+    // lines — a shorter request usually succeeds where the full one did not.
+    // Without this the gaps ship as blank subtitles.
+    for (let attempt = 1; attempt <= 2 && outstanding(c).length; attempt++) {
+      const missing = outstanding(c);
+      log(`${label}: retrying ${missing.length} missing line(s)`);
+      try {
+        await request(c, missing, `${label} retry ${attempt}`);
+      } catch (err) {
+        log(`${label}: retry ${attempt} failed — ${err.message}`);
+      }
+    }
+
+    const left = outstanding(c).length;
+    if (left) {
+      failures.push(`${label}: ${left} of ${total} lines still missing after 2 retries`);
+    }
+    log(`${label}: ${total - left}/${total} lines`);
   }
 
   return { translations, failures };
