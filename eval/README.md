@@ -121,6 +121,69 @@ Honesty about the null results:
 
 The gap is concentrated in the ~15–20 cues carrying real semantic content across cue boundaries. Those are also the cues a viewer most needs to be right.
 
+## Qwen3.5:9b vs. YouTube — measured 2026-09-03
+
+Run: `core/bin/jpsub.js translate` on the 131-cue fixture, local Ollama,
+`qwen3.5:9b`, `think:false`. Output: `fixtures/EmteTL5Ij8g_30-40min.qwen35-9b-en.*`.
+
+**75/78 units in 24.5 seconds**, on a 12 GB RTX 5070. That is ~24x faster than
+real time, which comfortably clears the §0.3 ahead-of-playhead target: a 24-min
+episode lands in about a minute, a 4-hour archive in about ten.
+
+### Beats the baseline: 5 of 7 categories
+
+| # | Source | YouTube | Qwen3.5:9b |
+|---|---|---|---|
+| 1 | 大会は対人系は参加あんまりしない | "I participate in tournaments that involve playing against other people." | **"I don't participate in many PvP tournaments"** |
+| 3 | 仕様 | "specification" | "It's a game mechanic." |
+| 4 | 対人 | "team games" / vague | "PvP" |
+| 5 | 私の調子と相談して | "Consult with your doctor" | "I'll decide based on my condition" |
+| 6 | またフレちゃんいないんだ | referent lost | "people think, 'Oh, Fure-chan isn't there again'" |
+
+Category 1 is the important one — YouTube states the **opposite** of what was
+said, and Qwen gets it right. Note this one is fixed by segmentation, not by the
+model: merging the negation into the same unit as its verb removes the failure
+before translation happens.
+
+Category 6 works because pass 1 caught the self-reference on its own: *"The
+speaker refers to themselves in the third person as 'フレちゃん'."* That is
+exactly what the two-pass design exists to do.
+
+### Still fails: 2 of 7
+
+| # | Source | Correct | Qwen3.5:9b | |
+|---|---|---|---|---|
+| 2 | あ、寝ちゃった。 | "Oh, it fell asleep." | "Ah, I fell asleep." | Same error as YouTube |
+| — | 高感度イベント | 好感度 → "affection events" | "high-difficulty event" | Identified the ASR error, picked the wrong fix (高難度) |
+
+**Pro-drop is the unsolved one.** It was predicted as the top quality risk in
+design §3.3, and it survives both a strong model and forward context. The
+creature falling asleep is visible on screen and nowhere in the text, so this
+particular instance may be genuinely unreachable without vision. Worth checking
+how often that is true before assuming the category is lost.
+
+### Reliability gap
+
+3 of 78 units came back untranslated — the model omitted keys from its JSON
+response — including one long, substantive line about team composition. Those
+become **blank subtitles**, not wrong ones. The pipeline reports it loudly
+rather than hiding it, but chunks with missing lines should be retried.
+
+### Other observations
+
+- Names are romanised phonetically: フレ → "Fure", not "Flare" (the streamer is
+  不知火フレア / Shiranui Flare). Consistent, so it does not read as an error,
+  but it is wrong. A seeded glossary from the channel would fix it.
+- 配信 never entered the glossary, yet the surrounding sentence still came out
+  right — the model handled it from context.
+
+### Verdict
+
+Qwen3.5:9b clears the baseline. The gap is real, it is concentrated where
+predicted, and it runs locally at 24x real time for free. Pro-drop and the
+dropped-line reliability issue are the two things worth working on next; neither
+is a reason to switch to Gemini yet.
+
 ## Status
 
 - [x] Japanese source captured
@@ -130,3 +193,6 @@ The gap is concentrated in the ~15–20 cues carrying real semantic content acro
 - [ ] Re-run through the actual API with a controlled prompt, to confirm the result holds outside a chat session
 - [ ] Second fixture from the anime profile
 - [ ] Blind scoring by someone who did not write the taxonomy
+- [x] Qwen3.5:9b run, scored against the baseline (above)
+- [ ] Retry chunks that come back with missing lines
+- [ ] Compare against Gemini, if the remaining gaps justify it

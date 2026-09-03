@@ -10,15 +10,24 @@ const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434";
 /**
  * Local Qwen (or any Ollama model).
  *
- * num_ctx matters: Ollama defaults to a small context that will silently
- * truncate a chunk carrying context units, producing quietly worse output
- * rather than an error. Set it explicitly.
+ * Two settings here are load-bearing, both learned the hard way:
+ *
+ * num_ctx — Ollama defaults to a small context that will silently truncate a
+ * chunk carrying context units, producing quietly worse output rather than an
+ * error.
+ *
+ * think — Qwen3.5 is a reasoning model. Left on, it emits its reasoning into a
+ * separate `thinking` field that consumes the whole num_predict budget before
+ * any answer is produced, and `content` comes back EMPTY. Translation does not
+ * need extended reasoning, and turning it off is also several times faster.
+ * Harmless on models that do not support it.
  */
 export function ollamaBackend({
   model = "qwen3.5:9b",
   numCtx = 16384,
-  numPredict = 4096,
+  numPredict = 8192,
   temperature = 0.2,
+  think = false,
 } = {}) {
   return async function ollama(prompt, { json = false } = {}) {
     let res;
@@ -29,6 +38,7 @@ export function ollamaBackend({
         body: JSON.stringify({
           model,
           stream: false,
+          think,
           format: json ? "json" : undefined,
           options: { temperature, num_ctx: numCtx, num_predict: numPredict },
           messages: [{ role: "user", content: prompt }],
@@ -53,7 +63,20 @@ export function ollamaBackend({
 
     const data = await res.json();
     const text = data?.message?.content;
-    if (!text) throw new Error("Ollama returned an empty message.");
+
+    if (!text) {
+      const thinking = data?.message?.thinking || "";
+      if (thinking) {
+        throw new Error(
+          `${model} produced ${thinking.length} characters of reasoning but no ` +
+          `answer — it ran out of output budget while thinking. Raise ` +
+          `numPredict (currently ${numPredict}) or keep think:false.`
+        );
+      }
+      throw new Error(
+        `Ollama returned an empty message (done_reason: ${data?.done_reason || "unknown"}).`
+      );
+    }
     return text;
   };
 }

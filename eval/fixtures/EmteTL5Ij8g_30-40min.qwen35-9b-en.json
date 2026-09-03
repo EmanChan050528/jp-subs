@@ -1,0 +1,499 @@
+{
+  "video_id": "EmteTL5Ij8g",
+  "title": "#10【ほの暮しの庭】ストーリーは最終回へ【不知火フレア/ホロライブ】",
+  "backend": "ollama",
+  "model": "qwen3.5:9b",
+  "generated_at": "2026-09-03T22:34:05.823Z",
+  "glossary": {
+    "setting": "A streamer is discussing their progress in a gardening simulation game (likely 'Garden of Memories' or similar), reflecting on past events, upcoming three-day events, and the stress of competitive multiplayer modes.",
+    "speakers": "The speaker refers to themselves in the third person as 'フレちゃん' (Fure-chan) or 'フレ' (Fure), indicating they are a streamer known by this nickname; no other speakers are clearly identified in this excerpt.",
+    "names": {
+      "フレ": "Fure",
+      "フレちゃん": "Fure-chan"
+    },
+    "terms": {
+      "アーク": "Arc (referring to a specific event or season)",
+      "自立神経": "autonomic nervous system (used metaphorically for stress/burnout)",
+      "対人": "player-vs-player (PvP) / competitive multiplayer",
+      "鉱石": "ore/mineral (game resource)",
+      "スプリンクラー": "sprinkler (garden irrigation device)"
+    },
+    "asr_corrections": {
+      "カサカサ攻撃なかったよね": "かさかさ攻撃なかったよね → かさかさ音なかったよね (no crackling sounds, likely referring to audio effects or game sounds)",
+      "高感度イベント": "高感度イベント → 高難度イベント (high-difficulty event, not 'high sensitivity')",
+      "とりあアーク": "とりあアーク → とりあえずアーク (for now regarding the Arc event)",
+      "本もあんまり本もあんまり": "本もあんまり本もあんまり → 本もあんまりない (not many seeds/books, likely referring to in-game items like 'ben' or similar homophone confusion)"
+    },
+    "register": "Casual, conversational streamer tone with frequent self-deprecating humor about stress and game mechanics; uses colloquial phrasing typical of Japanese live-stream commentary."
+  },
+  "units": [
+    {
+      "t_ms": 1802240,
+      "end_ms": 1806559,
+      "ja": "いつの話なんてか。",
+      "en": "What time period are we talking about?"
+    },
+    {
+      "t_ms": 1817120,
+      "end_ms": 1823320,
+      "ja": "カサカサ攻撃なかったよね、確か。",
+      "en": "There were no crackling sounds, right? I'm pretty sure."
+    },
+    {
+      "t_ms": 1826720,
+      "end_ms": 1841080,
+      "ja": "すごい昔にさ、来てってなんかこ来たらって言われたのめっちゃだいぶ遅い。",
+      "en": "A long time ago, someone said 'Come here,' and it took way too long for me to actually arrive."
+    },
+    {
+      "t_ms": 1838080,
+      "end_ms": 1845960,
+      "ja": "招待されてから来るのだいぶ遅い話よね。",
+      "en": "It's been a while since being invited before showing up, huh?"
+    },
+    {
+      "t_ms": 1841080,
+      "end_ms": 1842300,
+      "ja": "うん。",
+      "en": "Yeah."
+    },
+    {
+      "t_ms": 1842300,
+      "end_ms": 1845960,
+      "ja": "ああ、忘れてたわ。",
+      "en": "Ah, I forgot about that."
+    },
+    {
+      "t_ms": 1854840,
+      "end_ms": 1871799,
+      "ja": "なんかそういう辺りとかも全然触れてないので、ま、メインストーリー進めつつだけど、終わったら高感度イベントやりながら",
+      "en": "Since I haven't touched those areas at all yet, I'm thinking of progressing the main story and then tackling the high-difficulty event once it's done."
+    },
+    {
+      "t_ms": 1871880,
+      "end_ms": 1881559,
+      "ja": "進めてこうかななんて思っています。",
+      "en": "Once I find this one, will it keep coming back?"
+    },
+    {
+      "t_ms": 1882919,
+      "end_ms": 1892120,
+      "ja": "これ1回見つけたらずっと来てくれるのかな?",
+      "en": "Come on, stay with me."
+    },
+    {
+      "t_ms": 1888039,
+      "end_ms": 1892120,
+      "ja": "ちゃんとついてこいよ。",
+      "en": "What?"
+    },
+    {
+      "t_ms": 1896480,
+      "end_ms": 1897733,
+      "ja": "あれ?",
+      "en": "Are there three of them?"
+    },
+    {
+      "t_ms": 1897733,
+      "end_ms": 1899822,
+      "ja": "3匹いる?",
+      "en": "Now."
+    },
+    {
+      "t_ms": 1899822,
+      "end_ms": 1900240,
+      "ja": "今",
+      "en": "Yes."
+    },
+    {
+      "t_ms": 1904559,
+      "end_ms": 1906815,
+      "ja": "はい。",
+      "en": "Oh, wait a sec."
+    },
+    {
+      "t_ms": 1906815,
+      "end_ms": 1912080,
+      "ja": "あ、待ってね。",
+      "en": "Yes."
+    },
+    {
+      "t_ms": 1908799,
+      "end_ms": 1912080,
+      "ja": "はい。",
+      "en": "There they are."
+    },
+    {
+      "t_ms": 1912960,
+      "end_ms": 1913877,
+      "ja": "いて。",
+      "en": "Why?"
+    },
+    {
+      "t_ms": 1913877,
+      "end_ms": 1915712,
+      "ja": "なんでだよ。",
+      "en": "Where exactly?"
+    },
+    {
+      "t_ms": 1915712,
+      "end_ms": 1918159,
+      "ja": "じゃ、どこだよ。",
+      "en": "Yes."
+    },
+    {
+      "t_ms": 1922399,
+      "end_ms": 1925679,
+      "ja": "はい。",
+      "en": null
+    },
+    {
+      "t_ms": 1926519,
+      "end_ms": 1930279,
+      "ja": "あと1匹。",
+      "en": "One more."
+    },
+    {
+      "t_ms": 1931399,
+      "end_ms": 1935279,
+      "ja": "あと1匹。",
+      "en": "One more."
+    },
+    {
+      "t_ms": 1940519,
+      "end_ms": 1959440,
+      "ja": "なんかさ、もうすぐ終わっちゃおうって思ったらさ、なんか終わりたくなくてさ、すごい今日やるかどうかもちょっと悩んじゃったよね。",
+      "en": "I thought it was almost over, but I didn't want it to end and even hesitated about whether to play today or not."
+    },
+    {
+      "t_ms": 1958931,
+      "end_ms": 1979200,
+      "ja": "でもさ、でもやっぱり続きが見たいからやることにしたんですけど、アーク始まっちゃったら終わる目でちょっとできないかもなって",
+      "en": "But since I really wanted to see how it ended up, I decided to play, though I'm worried the Arc might start soon and make it hard to continue."
+    },
+    {
+      "t_ms": 1975840,
+      "end_ms": 1979440,
+      "ja": "思ったんで。",
+      "en": null
+    },
+    {
+      "t_ms": 1979440,
+      "end_ms": 1986639,
+      "ja": "あ、でもあのとりあアークがっつり3日間やらないと思います。",
+      "en": "Ah, but I don't think I'll be doing the full three-day event for now."
+    },
+    {
+      "t_ms": 1987000,
+      "end_ms": 2002853,
+      "ja": "あの、3日のうちのなんか2回、2日くらいは参加するかなって思ってるんですけど、あとフルでは参加しないかも。",
+      "en": "I'm thinking about participating in two of the three days, maybe around two days, but might skip the full version."
+    },
+    {
+      "t_ms": 2002853,
+      "end_ms": 2004480,
+      "ja": "1日目は参加するフルで。",
+      "en": "I'll participate on the first day at full capacity."
+    },
+    {
+      "t_ms": 2006120,
+      "end_ms": 2015720,
+      "ja": "前回のアークの時になんか自立神経壊れちゃったんで。",
+      "en": "My autonomic nervous system broke down during the last Arc."
+    },
+    {
+      "t_ms": 2015840,
+      "end_ms": 2028760,
+      "ja": "なんかさ、あの、長時間配信で壊れたんじゃなくて、あの、頑張らなきゃみたいな、やらなきゃみたいななんかなんて言うの?",
+      "en": "It wasn't from long streaming sessions breaking me, but more from feeling like I had to push myself and do things I shouldn't have."
+    },
+    {
+      "t_ms": 2027751,
+      "end_ms": 2028888,
+      "ja": "ストレス。",
+      "en": "Stress."
+    },
+    {
+      "t_ms": 2028888,
+      "end_ms": 2031581,
+      "ja": "申し訳ないけど、これストレスです。",
+      "en": "Sorry, but this is stress."
+    },
+    {
+      "t_ms": 2031581,
+      "end_ms": 2045799,
+      "ja": "ストレスでちょっと自立神経が壊れたのでちょっとあの緩い緩い気持ちで参加させてもらおうと思って今回なのでなんか今回のなんか",
+      "en": "Since my autonomic nervous system broke down from the stress, I plan to participate with a relaxed mindset this time. The team composition takes participation frequency into account, so if I go full capacity, it might throw off the power balance."
+    },
+    {
+      "t_ms": 2041519,
+      "end_ms": 2058599,
+      "ja": "チーム編成ってあの参加頻度とかも考慮してのチームになってるので逆になんか私がフルでなんかやっちゃうとパワーバランスが多分崩れる",
+      "en": null
+    },
+    {
+      "t_ms": 2054800,
+      "end_ms": 2068599,
+      "ja": "のでまちょっと要所要でやってこうかなと。",
+      "en": "So I'll just do it whenever needed."
+    },
+    {
+      "t_ms": 2064879,
+      "end_ms": 2073480,
+      "ja": "だってAチーム経験者が多すぎるからね。",
+      "en": "There are too many experienced A-team members anyway."
+    },
+    {
+      "t_ms": 2068599,
+      "end_ms": 2090200,
+      "ja": "逆になんかぜ、全員が全員フルでやりすぎたらAチームだけなんか異様に強ないみたいな感じになっちゃうかもしれないからね。",
+      "en": "If everyone goes full capacity, the A-team might end up being unusually strong compared to others."
+    },
+    {
+      "t_ms": 2088936,
+      "end_ms": 2109880,
+      "ja": "ここはあの普通に私の調子と相談してやってくのでフルでは参加しないつもりだよっていうのでよろしく。",
+      "en": "I'll decide based on my condition and won't be participating at full capacity this time, so please understand."
+    },
+    {
+      "t_ms": 2116040,
+      "end_ms": 2120400,
+      "ja": "あー、やめて。",
+      "en": "Ah, stop it."
+    },
+    {
+      "t_ms": 2125480,
+      "end_ms": 2138040,
+      "ja": "そう、なんか対人だったら参加するのやめようかなって思ってたんだけど、そうじゃないらしかったので、今回は参加しました。",
+      "en": "Yeah, I was thinking about stopping PvP participation altogether, but since that's not the case, I ended up joining this time."
+    },
+    {
+      "t_ms": 2134760,
+      "end_ms": 2148560,
+      "ja": "あの、基本的になんか、あの、対人ゲームあんまり得意じゃないので、なんか誰かときそうみたいなゲームになると",
+      "en": "Basically, I'm not very good at PvP games, so when it's a game where you can team up with someone,"
+    },
+    {
+      "t_ms": 2145599,
+      "end_ms": 2160359,
+      "ja": "なんかやってる側よりも見てる側の方が熱くなっちゃってなんか喧嘩にな、コメントが喧嘩になるのが結構嫌なので配信でなんか",
+      "en": "the viewers tend to get more excited than the players and things turn into arguments in the comments, which I really dislike."
+    },
+    {
+      "t_ms": 2156319,
+      "end_ms": 2163920,
+      "ja": "やりたくないなというのがあって。",
+      "en": "That's why I don't want to do that kind of thing on stream."
+    },
+    {
+      "t_ms": 2160359,
+      "end_ms": 2161743,
+      "ja": "そう。",
+      "en": "Right."
+    },
+    {
+      "t_ms": 2161743,
+      "end_ms": 2177079,
+      "ja": "は基本的に大会は対人系は参加あんまりしないのでそこだけね、なんか大会でまたフレちゃんいないんだみたいな風になる時、あ、対人",
+      "en": "Basically, I don't participate in many PvP tournaments, so sometimes people think, 'Oh, Fure-chan isn't there again for the tournament.'"
+    },
+    {
+      "t_ms": 2174040,
+      "end_ms": 2180440,
+      "ja": "だからかってお察しみたいにしていただけると",
+      "en": "So please understand that it's because of PvP."
+    },
+    {
+      "t_ms": 2184720,
+      "end_ms": 2192400,
+      "ja": "こっち側落ちてないかな?",
+      "en": "I'm not falling behind on my end."
+    },
+    {
+      "t_ms": 2188920,
+      "end_ms": 2192400,
+      "ja": "あ、寝ちゃった。",
+      "en": "Ah, I fell asleep."
+    },
+    {
+      "t_ms": 2199760,
+      "end_ms": 2210960,
+      "ja": "そう、誰かときそうみたいなやつはあんまりあんまりなんですよね。",
+      "en": "Yeah, games where you can team up with someone are just not really for me."
+    },
+    {
+      "t_ms": 2207560,
+      "end_ms": 2214160,
+      "ja": "晴れたね。",
+      "en": "It's sunny now."
+    },
+    {
+      "t_ms": 2210960,
+      "end_ms": 2221560,
+      "ja": "なんか普段結構雨、雨の時にさ、夜当たる率高いからなんかあんまり雨の、ま、困ってないっていう。",
+      "en": "Usually, it rains a lot at night and the hit rate is high, so I'm not really bothered by rain."
+    },
+    {
+      "t_ms": 2219970,
+      "end_ms": 2226880,
+      "ja": "困ってないけど壊れて今どどうしようもないけどねみたいな状態だけどね。",
+      "en": "I'm not bothered, but things are broken and there's nothing I can do about it right now."
+    },
+    {
+      "t_ms": 2232760,
+      "end_ms": 2235320,
+      "ja": "壊れて。",
+      "en": "Broken."
+    },
+    {
+      "t_ms": 2235320,
+      "end_ms": 2237880,
+      "ja": "あ、何?",
+      "en": "Ah, what?"
+    },
+    {
+      "t_ms": 2239839,
+      "end_ms": 2242839,
+      "ja": "仕様",
+      "en": "It's a game mechanic."
+    },
+    {
+      "t_ms": 2248480,
+      "end_ms": 2251480,
+      "ja": "で",
+      "en": "And..."
+    },
+    {
+      "t_ms": 2256000,
+      "end_ms": 2260599,
+      "ja": "そろそろ。",
+      "en": "Almost time."
+    },
+    {
+      "t_ms": 2258465,
+      "end_ms": 2264341,
+      "ja": "[音楽]これいつ使うんだも。",
+      "en": "[Music] When are we supposed to use this?"
+    },
+    {
+      "t_ms": 2264341,
+      "end_ms": 2266440,
+      "ja": "まだ使うのか、これ。",
+      "en": "Are we still going to use this?"
+    },
+    {
+      "t_ms": 2262136,
+      "end_ms": 2266440,
+      "ja": "そろそろ本気出すか、これで。",
+      "en": "I guess it's time to go all out with this."
+    },
+    {
+      "t_ms": 2271800,
+      "end_ms": 2275000,
+      "ja": "これで",
+      "en": "With this one,"
+    },
+    {
+      "t_ms": 2278079,
+      "end_ms": 2282920,
+      "ja": "鉱石はいっぱいあると。",
+      "en": "I've got plenty of ore."
+    },
+    {
+      "t_ms": 2285200,
+      "end_ms": 2288880,
+      "ja": "そろそろ。",
+      "en": "It's about time."
+    },
+    {
+      "t_ms": 2289839,
+      "end_ms": 2294373,
+      "ja": "そろそろ本気出すか。",
+      "en": "Time to get serious with this."
+    },
+    {
+      "t_ms": 2294373,
+      "end_ms": 2295280,
+      "ja": "でか",
+      "en": "Oh my,"
+    },
+    {
+      "t_ms": 2301280,
+      "end_ms": 2308520,
+      "ja": "んで逆に今度鉱石が全然足りない。",
+      "en": "But now I'm completely out of ore."
+    },
+    {
+      "t_ms": 2314880,
+      "end_ms": 2319079,
+      "ja": "3つまで行けんのね。",
+      "en": "I can only go up to three levels."
+    },
+    {
+      "t_ms": 2324720,
+      "end_ms": 2328119,
+      "ja": "よし。",
+      "en": "Alright."
+    },
+    {
+      "t_ms": 2342920,
+      "end_ms": 2351359,
+      "ja": "時間がすぐ進むから全然足りないけど。",
+      "en": "Time's moving fast, so I'm totally low on resources."
+    },
+    {
+      "t_ms": 2355680,
+      "end_ms": 2358446,
+      "ja": "うーん。",
+      "en": "Hmm..."
+    },
+    {
+      "t_ms": 2358446,
+      "end_ms": 2360520,
+      "ja": "ああ、",
+      "en": "Ah,"
+    },
+    {
+      "t_ms": 2362800,
+      "end_ms": 2370966,
+      "ja": "そろそろ本探したいなって思うけどさ、本もあんまり本もあんまりなの?",
+      "en": "I think it's about time I looked for some seeds, but there aren't many books or seeds left?"
+    },
+    {
+      "t_ms": 2370966,
+      "end_ms": 2373240,
+      "ja": "なんかすごい雑草増えてる。",
+      "en": "Weeds are growing wild."
+    },
+    {
+      "t_ms": 2371493,
+      "end_ms": 2378720,
+      "ja": "雨降った次の日は雑草が多いとかあります。",
+      "en": "The day after rain usually brings a lot of weeds."
+    },
+    {
+      "t_ms": 2375359,
+      "end_ms": 2378720,
+      "ja": "こら。",
+      "en": "Hey!"
+    },
+    {
+      "t_ms": 2384319,
+      "end_ms": 2389280,
+      "ja": "スプリンクラーがまるで意味をなし。",
+      "en": "The sprinkler is doing absolutely nothing."
+    },
+    {
+      "t_ms": 2390359,
+      "end_ms": 2395119,
+      "ja": "これならスプリンクラーなくても変わらん。",
+      "en": "With this, the sprinkler isn't even needed."
+    },
+    {
+      "t_ms": 2396000,
+      "end_ms": 2405319,
+      "ja": "だから早くスプリンクラーをさ、いや、作ったと",
+      "en": "So I need to make a sprinkler ASAP, no wait, I already made one."
+    }
+  ]
+}
