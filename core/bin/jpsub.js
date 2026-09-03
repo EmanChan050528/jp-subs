@@ -6,11 +6,11 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { segment, stats } from "../src/segment.js";
-import { chunk } from "../src/chunk.js";
-import { makeBackend } from "../src/backends.js";
-import { run } from "../src/pipeline.js";
-import { toSrt } from "../src/srt.js";
+import { segment, stats } from "../../extension/src/core/segment.js";
+import { chunk } from "../../extension/src/core/chunk.js";
+import { makeBackend } from "../../extension/src/core/backends.js";
+import { run } from "../../extension/src/core/pipeline.js";
+import { toSrt } from "../../extension/src/core/srt.js";
 
 function parseArgs(argv) {
   const [command, input, ...rest] = argv;

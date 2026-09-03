@@ -5,7 +5,12 @@
 // Ollama is the primary path and needs no dependencies. Gemini is the fallback
 // and is NOT yet verified against a live endpoint — see the note on it.
 
-const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434";
+// These modules are shared by the Node CLI and the extension's service worker,
+// so nothing here may assume `process` exists.
+const env = (key) =>
+  (typeof process !== "undefined" && process.env && process.env[key]) || undefined;
+
+const DEFAULT_OLLAMA_HOST = env("OLLAMA_HOST") || "http://localhost:11434";
 
 /**
  * Local Qwen (or any Ollama model).
@@ -28,11 +33,12 @@ export function ollamaBackend({
   numPredict = 8192,
   temperature = 0.2,
   think = false,
+  host = DEFAULT_OLLAMA_HOST,
 } = {}) {
   return async function ollama(prompt, { json = false } = {}) {
     let res;
     try {
-      res = await fetch(`${OLLAMA_HOST}/api/chat`, {
+      res = await fetch(`${host}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -46,7 +52,7 @@ export function ollamaBackend({
       });
     } catch (err) {
       throw new Error(
-        `Cannot reach Ollama at ${OLLAMA_HOST}. Is it running? ` +
+        `Cannot reach Ollama at ${host}. Is it running? ` +
         `Start it with "ollama serve", then "ollama pull ${model}". (${err.message})`
       );
     }
@@ -56,6 +62,16 @@ export function ollamaBackend({
       if (res.status === 404) {
         throw new Error(
           `Ollama has no model "${model}". Pull it first: ollama pull ${model}`
+        );
+      }
+      // Ollama rejects unknown origins outright. From a browser extension this
+      // is the default state, and the message it returns says nothing useful.
+      if (res.status === 403) {
+        throw new Error(
+          `Ollama refused the request (403). It only accepts requests from ` +
+          `origins in OLLAMA_ORIGINS, which does not include browser ` +
+          `extensions by default. Set it and restart Ollama:\n` +
+          `  setx OLLAMA_ORIGINS "chrome-extension://*"`
         );
       }
       throw new Error(`Ollama returned HTTP ${res.status}: ${body.slice(0, 300)}`);
@@ -89,13 +105,12 @@ export function ollamaBackend({
  * checked on 2026-09-03, but this code path has never been run. Expect to fix
  * it on first use. Requires: npm install @google/genai, and GEMINI_API_KEY set.
  */
-export function geminiBackend({ model = "gemini-3.8-flash" } = {}) {
+export function geminiBackend({ model = "gemini-3.8-flash", apiKey = null } = {}) {
   let client = null;
 
   return async function gemini(prompt) {
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not set in the environment.");
-    }
+    const key = apiKey || env("GEMINI_API_KEY");
+    if (!key) throw new Error("No Gemini API key (set GEMINI_API_KEY).");
     if (!client) {
       let mod;
       try {

@@ -1,12 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "JP Subs — transcript extractor",
-  "description": "Build step 1: extracts the Japanese caption track from a YouTube video. No translation, no rendering yet.",
-  "version": "0.1.0",
-  "permissions": ["activeTab"],
+  "name": "JP Subs — Japanese to English subtitles",
+  "description": "Translates a YouTube video's Japanese captions into English subtitles using a local model, and renders them over the player.",
+  "version": "0.2.0",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["http://localhost:11434/*"],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
   "action": {
     "default_popup": "src/popup.html",
-    "default_title": "JP Subs — extract transcript"
+    "default_title": "JP Subs"
   },
   "content_scripts": [
     {
@@ -18,7 +23,7 @@
     },
     {
       "matches": ["https://www.youtube.com/*"],
-      "js": ["src/content.js"],
+      "js": ["src/overlay.js", "src/content.js"],
       "run_at": "document_start",
       "world": "ISOLATED",
       "all_frames": false

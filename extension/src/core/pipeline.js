@@ -40,7 +40,9 @@ export async function analyse(units, backend, meta = {}, log = () => {}) {
 }
 
 /** Pass 2: translate every chunk. Returns an array parallel to `units`. */
-export async function translateUnits(units, glossary, backend, options = {}, log = () => {}) {
+export async function translateUnits(
+  units, glossary, backend, options = {}, log = () => {}, onProgress = () => {}
+) {
   const chunks = chunk(units, options);
   const translations = new Array(units.length).fill("");
   const failures = [];
@@ -89,6 +91,10 @@ export async function translateUnits(units, glossary, backend, options = {}, log
       }
     }
 
+    // Hand back what exists so far: subtitles can start showing while the
+    // rest of the video is still being translated.
+    onProgress(translations, c.index + 1, chunks.length);
+
     const left = outstanding(c).length;
     if (left) {
       failures.push(`${label}: ${left} of ${total} lines still missing after 2 retries`);
@@ -99,7 +105,7 @@ export async function translateUnits(units, glossary, backend, options = {}, log
   return { translations, failures };
 }
 
-export async function run(transcript, backend, options = {}, log = () => {}) {
+export async function run(transcript, backend, options = {}, log = () => {}, onProgress = () => {}) {
   const cues = transcript.cues || [];
   if (!cues.length) throw new Error("Transcript contains no cues.");
 
@@ -108,7 +114,8 @@ export async function run(transcript, backend, options = {}, log = () => {}) {
 
   const glossary = await analyse(units, backend, transcript, log);
   const { translations, failures } = await translateUnits(
-    units, glossary, backend, options, log
+    units, glossary, backend, options, log, (partial, done, total) =>
+      onProgress({ units, translations: partial, done, total })
   );
 
   const translated = translations.filter(Boolean).length;

@@ -1,7 +1,7 @@
-# Extension — build step 1
+# Extension — build step 3
 
-Extracts the Japanese caption track from a YouTube video and saves it as JSON.
-**No translation and no subtitle rendering yet** — that is build steps 2 and 3.
+Translates a YouTube video's Japanese captions into English and renders them
+over the player. Uses a local model through Ollama; nothing leaves the machine.
 
 This step exists first because of what the caption-access testing found: the
 content of a caption track is only reachable from inside a live player session
@@ -9,6 +9,19 @@ content of a caption track is only reachable from inside a live player session
 built before anything depends on it.
 
 ## Load it
+
+### Prerequisite: let Ollama accept the extension
+
+Ollama refuses requests from origins it does not know, and browser extensions
+are not on its default list — it answers **403** with no useful message.
+Verified: a `chrome-extension://` origin is rejected outright until this is set.
+
+```bash
+setx OLLAMA_ORIGINS "chrome-extension://*"
+```
+
+Then **restart Ollama** so it picks the variable up. Also make sure the model is
+present: `ollama pull qwen3.5:9b`.
 
 1. Open `chrome://extensions`
 2. Turn on **Developer mode** (top right)
@@ -21,8 +34,15 @@ the extension while a YouTube tab is already open will not attach it.
 
 ## Use it
 
-Click the toolbar icon. The popup reports what it found; press
-**Extract Japanese transcript** to save a `.json` file to your downloads.
+Click the toolbar icon. The popup reports what it found, then:
+
+- **Translate & show subtitles** — extracts, translates, and renders over the
+  player. Subtitles start appearing after the first chunk rather than at the
+  end, and progress is shown both in the popup and on the video.
+- **Save transcript only** — the build step 1 behaviour: writes the Japanese
+  `.json` to your downloads and does not call a model.
+
+Model and host are configurable under **Settings** in the popup.
 
 Output shape:
 
@@ -46,8 +66,25 @@ straight into the evaluation set.
 | File | World | Job |
 |---|---|---|
 | `src/interceptor.js` | **MAIN** | Hooks `fetch`/`XHR`, reads `ytInitialPlayerResponse`, drives the player, fetches the track |
-| `src/content.js` | ISOLATED | Bridge between the popup and the page; saves the file |
+| `src/content.js` | ISOLATED | Bridge between popup, worker and page; saves files |
+| `src/overlay.js` | ISOLATED | Shadow-DOM subtitle renderer |
+| `src/background.js` | worker | Runs the translation pipeline |
+| `src/core/*.js` | worker | Segmentation, chunking, prompts, backends, SRT |
 | `src/popup.js` | — | UI |
+
+`src/core/` is the **canonical** home of the translation logic. The Node CLI in
+`../core/` imports from here rather than keeping its own copy — Chrome can only
+load files inside the extension directory, so this direction avoids both
+duplication and a build step.
+
+**Why the worker runs the model calls.** They are cross-origin (localhost) and
+only the extension's own context holds that host permission. A content script
+would be subject to the page's CORS.
+
+**Rendering.** The overlay is a shadow root attached to the player element, so
+host-page CSS cannot reach it and fullscreen and theatre mode come for free. The
+active cue is found from `video.currentTime` by binary search over a sorted
+list, which is what makes seeking instant.
 
 The split is forced, not stylistic. The player's methods and
 `ytInitialPlayerResponse` are page objects that an isolated content script
@@ -87,7 +124,24 @@ Test against these, in order:
 - [ ] A non-video YouTube page — popup should degrade cleanly
 - [ ] **Navigate between two videos without reloading** — the SPA case; see below
 
-## Known gaps
+## Known gaps (step 3)
+
+- [ ] **Nothing in step 3 has been run in a browser.** Every file syntax-checks
+      and the shared core is exercised by the CLI, but the worker, the overlay,
+      the progress plumbing and the popup have not been loaded. Step 1 worked
+      first try; do not assume this will.
+- [ ] **Ollama CORS is a hard prerequisite** — see above. Without
+      `OLLAMA_ORIGINS` every run fails at the first model call.
+- [ ] **MV3 worker lifetime.** A worker is killed after ~30 s idle; in-flight
+      fetches keep it alive and the pipeline is a continuous fetch chain, but a
+      long video with a slow model may still be at risk. If runs die partway,
+      move the pipeline into an offscreen document.
+- [ ] **No result caching.** Re-watching re-translates from scratch (step 4).
+- [ ] **No ahead-of-playhead scheduling.** Chunks are translated in order from
+      the start of the video, not from the playhead (step 4).
+- [ ] **Subtitle styling is not user-configurable** (design §5.3).
+
+## Known gaps (carried from step 1)
 
 - [ ] **SPA navigation is only partly handled.** `yt-navigate-finish` clears the
       captured URLs, but this has not been tested against a real

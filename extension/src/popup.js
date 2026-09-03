@@ -2,11 +2,16 @@
 
 const $ = (id) => document.getElementById(id);
 const goButton = $("go");
+const saveButton = $("save");
+const bar = $("bar");
+
+let tabId = null;
+let poll = null;
 
 function show(text, kind) {
   const el = $("msg");
   el.textContent = text;
-  el.className = `show ${kind}`;
+  el.className = text ? `show ${kind}` : "";
 }
 
 function facts(rows) {
@@ -21,12 +26,18 @@ function facts(rows) {
   }
 }
 
+function setProgress(done, total) {
+  if (!total) { bar.removeAttribute("value"); bar.removeAttribute("max"); return; }
+  bar.max = total;
+  bar.value = done;
+}
+
 async function activeTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return tab;
 }
 
-async function send(tabId, type) {
+async function toTab(type) {
   try {
     return await chrome.tabs.sendMessage(tabId, { type });
   } catch {
@@ -39,14 +50,79 @@ async function send(tabId, type) {
   }
 }
 
-async function refresh() {
+// ------------------------------------------------------------------ settings
+
+async function loadSettings() {
+  const s = await chrome.storage.local.get(["model", "host"]);
+  $("model").value = s.model || "";
+  $("host").value = s.host || "";
+}
+
+for (const key of ["model", "host"]) {
+  $(key).addEventListener("change", async (e) => {
+    const value = e.target.value.trim();
+    if (value) await chrome.storage.local.set({ [key]: value });
+    else await chrome.storage.local.remove(key);
+  });
+}
+
+// -------------------------------------------------------------------- status
+
+function stopPolling() {
+  if (poll) clearInterval(poll);
+  poll = null;
+}
+
+async function refreshRunState() {
+  const res = await chrome.runtime.sendMessage({ type: "run:status", tabId });
+  const state = res?.data;
+  if (!state) return;
+
+  if (state.running) {
+    goButton.disabled = true;
+    saveButton.disabled = true;
+    setProgress(state.done || 0, state.total || 0);
+    const phase =
+      state.phase === "translating" && state.total
+        ? `Translating chunk ${state.done}/${state.total}`
+        : state.phase === "analysing"
+          ? "Reading the whole transcript…"
+          : "Getting transcript…";
+    show(phase, "ok");
+    return;
+  }
+
+  stopPolling();
+  setProgress(0, 0);
+  bar.removeAttribute("value");
+  goButton.disabled = false;
+  saveButton.disabled = false;
+
+  if (state.phase === "error") show(state.error, "err");
+  else if (state.phase === "done") {
+    const failed = state.failures?.length;
+    show(
+      `Done — ${state.units} lines.` +
+      (failed ? `\n${failed} chunk problem(s); some lines may be blank.` : ""),
+      failed ? "err" : "ok"
+    );
+  }
+}
+
+// --------------------------------------------------------------------- setup
+
+async function init() {
+  await loadSettings();
+
   const tab = await activeTab();
+  tabId = tab?.id;
+
   if (!tab?.url?.includes("youtube.com")) {
     facts([["Status", "Not a YouTube page"]]);
     return;
   }
 
-  const res = await send(tab.id, "detect");
+  const res = await toTab("detect");
   if (!res.ok) {
     facts([["Status", "Unavailable"]]);
     show(res.error, "err");
@@ -61,56 +137,52 @@ async function refresh() {
 
   $("title").textContent = d.title || d.videoId || "";
 
-  const langs = d.tracks.length
-    ? d.tracks.map((t) => `${t.lang} (${t.kind})`).join(", ")
-    : "none";
-
   const rows = [
     ["Duration", d.durationSeconds ? `${Math.round(d.durationSeconds / 60)} min` : "?"],
-    ["Tracks", langs],
+    ["Tracks", d.tracks.length ? d.tracks.map((t) => `${t.lang} (${t.kind})`).join(", ") : "none"],
   ];
 
   if (d.japanese) {
     rows.push(["Japanese", d.japanese.kind === "asr" ? "auto-generated" : "author-supplied"]);
     goButton.disabled = false;
+    saveButton.disabled = false;
   } else {
     rows.push(["Japanese", "not available", "warn"]);
-    goButton.disabled = true;
-    show(
-      "No Japanese caption track on this video. ASR fallback is not built yet " +
-      "(design doc §1.3).",
-      "err"
-    );
+    show("No Japanese caption track on this video.", "err");
   }
 
-  if (!d.playerReady) {
-    rows.push(["Player", "still loading", "warn"]);
-  }
-
+  if (!d.playerReady) rows.push(["Player", "still loading", "warn"]);
   facts(rows);
+
+  await refreshRunState();
 }
 
 goButton.addEventListener("click", async () => {
   goButton.disabled = true;
-  show("Enabling the caption track and waiting for the player to fetch it…", "ok");
+  saveButton.disabled = true;
+  show("Starting…", "ok");
+  bar.removeAttribute("value"); // indeterminate
 
-  const tab = await activeTab();
-  const res = await send(tab.id, "extract");
+  stopPolling();
+  poll = setInterval(refreshRunState, 500);
 
-  if (!res.ok) {
+  const res = await chrome.runtime.sendMessage({ type: "run:start", tabId });
+  await refreshRunState();
+  if (res && !res.ok) {
+    stopPolling();
     show(res.error, "err");
     goButton.disabled = false;
-    return;
+    saveButton.disabled = false;
   }
-
-  const d = res.data;
-  const coverage =
-    d.coverage_pct === null ? "" : `\nCoverage: ${d.coverage_pct}% of the video`;
-  show(
-    `Saved ${d.filename}\n${d.cue_count} cues${coverage}`,
-    "ok"
-  );
-  goButton.disabled = false;
 });
 
-refresh();
+saveButton.addEventListener("click", async () => {
+  saveButton.disabled = true;
+  show("Extracting…", "ok");
+  const res = await toTab("extract:save");
+  if (!res.ok) show(res.error, "err");
+  else show(`Saved ${res.data.filename}\n${res.data.cue_count} cues`, "ok");
+  saveButton.disabled = false;
+});
+
+init();

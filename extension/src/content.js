@@ -65,13 +65,59 @@
     return name;
   }
 
+  // ------------------------------------------------------------- overlay
+
+  const overlay = new globalThis.JPSubOverlay();
+
+  function withOverlay(fn) {
+    if (!overlay.mount()) return false;
+    fn();
+    return true;
+  }
+
+  // YouTube is an SPA: a new video reuses the document, so the old video's
+  // subtitles must not survive the navigation.
+  window.addEventListener("yt-navigate-finish", () => {
+    overlay.clear();
+    chrome.runtime.sendMessage({ type: "run:clear", tabId: undefined }).catch(() => {});
+  });
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === "overlay:units") {
+      withOverlay(() => {
+        overlay.setUnits(msg.units);
+        overlay.setStatus(msg.status || "");
+      });
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    if (msg?.type === "overlay:status") {
+      withOverlay(() => overlay.setStatus(msg.text));
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    if (msg?.type === "overlay:clear") {
+      overlay.clear();
+      sendResponse({ ok: true });
+      return false;
+    }
+
     if (msg?.type === "detect") {
       ask("detect").then(sendResponse);
       return true; // async
     }
 
+    // Full transcript, cues included, nothing written to disk. This is what the
+    // service worker consumes.
     if (msg?.type === "extract") {
+      ask("extract").then(sendResponse);
+      return true; // async
+    }
+
+    // Same extraction, but saved as a file and answered with a summary.
+    if (msg?.type === "extract:save") {
       ask("extract").then((res) => {
         if (!res.ok) return sendResponse(res);
         try {
