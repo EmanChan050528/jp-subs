@@ -26,9 +26,16 @@ A pipeline that captures live audio, transcribes it with a speech recognition mo
 - [ ] **MV3 service worker termination.** The worker is killed after ~30s idle, which would drop the capture and the ASR WebSocket mid-session. Persistent audio work has to live in an **offscreen document**, not the service worker.
 - [ ] **`tabCapture` re-routes audio.** Capturing mutes the tab unless the stream is piped back to an `AudioContext` destination. Must be handled or the user loses their audio.
 - [ ] **Requires a user gesture** per tab to start capture — affects the activation UX.
-- [ ] **DRM-protected media.** Widevine-protected audio (Netflix, Disney+, etc.) may not be capturable. Confirm early; it decides whether the extension works on the content the user actually wants.
+- [x] ~~**DRM-protected media.**~~ Resolved by the §0.5 content decision: ordinary YouTube uploads and live streams are not Widevine-protected, so capture is available. (YouTube *movies and rentals* do use EME — out of scope.)
 - [ ] **API key handling.** An API key shipped inside an extension is public. Either proxy requests through a relay backend, or require users to supply their own key. This is an architecture decision, not a detail — pick one before Stage 3.
 - [ ] **Overlay isolation.** Inject into a shadow DOM so host-page CSS and CSP cannot break the subtitles, and so the overlay survives the page's own fullscreen video container.
+
+#### YouTube-specific (the only host page in scope for now)
+
+- [ ] **Ads interrupt the audio.** The pipeline will happily transcribe and translate ad reads, burning tokens and putting nonsense on screen. Detect ad playback (the player carries an `ad-showing` state) and pause capture. Cheap to fix, embarrassing if missed.
+- [ ] **Anchor the overlay to the player**, not the page — YouTube's player is a stable, well-known container, and anchoring there gets theatre mode and fullscreen for free.
+- [ ] **Handle player events:** seek, pause, playback-rate change, and quality-change buffering all break an in-flight streaming pipeline. Seeking in particular must flush the whole queue.
+- [ ] YouTube's own live delay (typically 5–30 s) is irrelevant to us — our budget is measured relative to the audio the viewer actually hears.
 
 ### 0.3 Latency budget
 
@@ -65,9 +72,9 @@ Predicted breakdown (browser extension + hosted streaming ASR):
 | Ceiling | $1.00 per hour of audio, all-in (ASR + translation) |
 | Target | $0.60 per hour |
 
-Predicted translation cost. Assumptions: ~720 utterances/hour (12/min, dialogue-dense anime) up to ~1,200/hour (20/min, talk stream); per request ≈ 1,500-token cached prefix (system prompt + glossary), ~280 uncached tokens (rolling window + current line), ~25 output tokens.
+Predicted translation cost. Per request ≈ 1,500-token cached prefix (system prompt + glossary), ~280 uncached tokens (rolling window + current line), ~25 output tokens. Utterance rates follow the two content profiles in §0.5.
 
-| Model | Input / Output per MTok | Per request | 720 utt/hr | 1,200 utt/hr |
+| Model | Input / Output per MTok | Per request | Anime (~720 utt/hr) | VTuber (~1,200 utt/hr) |
 |---|---|---|---|---|
 | Haiku 4.5 | $1 / $5 | $0.00056 | $0.40 | $0.67 |
 | Sonnet 5 | $2 / $10 | $0.00111 | $0.80 | $1.33 |
@@ -76,14 +83,52 @@ Predicted translation cost. Assumptions: ~720 utterances/hour (12/min, dialogue-
 Hosted streaming ASR adds roughly **$0.15–0.50/hour** depending on vendor.
 - [ ] **Verify current ASR vendor pricing** — the range above is unverified.
 
+**Session length matters more than the hourly rate.** A 24-minute anime episode and a 4-hour VTuber stream sit an order of magnitude apart, and the per-hour figure hides that:
+
+| Session | Haiku 4.5 | Sonnet 5 | (incl. ASR) |
+|---|---|---|---|
+| One anime episode (~24 min) | $0.22 | $0.38 | +$0.06–0.20 |
+| One 4-hour VTuber stream | $2.66 | $5.33 | +$0.60–2.00 |
+
+**This breaks the $1.00/hr ceiling for VTuber content on Sonnet 5** ($1.33/hr translation alone, before ASR). Three options, to be decided in Stage 7 with real quality data:
+- [ ] (a) Default VTuber content to Haiku 4.5 and anime to Sonnet 5 — cheapest route that keeps the ceiling
+- [ ] (b) Raise the ceiling for live streams and accept ~$1.80/hr
+- [ ] (c) Cut per-request cost instead: batch 2–3 utterances per call (VTuber speech is fast and fragmentary, so merging is natural) and shrink the rolling window. Roughly a 40% saving, at some cost in latency and context.
+
+Option (c) is worth measuring first, since it helps both profiles and does not trade away model quality.
+
 **Cache economics.** Cache reads cost 0.1× base input; writes cost 1.25× (5-minute TTL). Because subtitle traffic is continuous, consecutive requests start well under 5 minutes apart and keep the default cache alive indefinitely — so the 1.25× write is paid roughly **once per session**, and the 1-hour TTL (2× write) buys nothing. Cache write cost is negligible here and can be left out of the per-hour model.
 
 **Proposed default:** Sonnet 5 + hosted ASR ≈ $0.95/hr at the low utterance rate. Haiku 4.5 as an explicit "cost mode". Opus 5 reserved for generating the Stage 7 reference translations, not for live use.
 - [ ] Confirm the model choice against real quality data in Stage 7 rather than assuming it now
 
-### 0.5 Remaining Stage 0 items
+### 0.5 Content profiles
 
-- [ ] Which content is the actual target (anime, VTuber streams, news, live calls)? Utterance rate and register differ enough to change both the cost model and the prompt.
+**In scope: anime and VTuber streams on YouTube.** Audio sources outside YouTube are a later exploration and are not a design constraint now — but keep the capture layer behind an interface so a second source can be added without touching the rest of the pipeline.
+
+The two profiles are different enough to need separate tuning, and possibly separate models:
+
+| | Anime | VTuber stream |
+|---|---|---|
+| Speech | Scripted, clearly enunciated | Unscripted, fast, overlapping, heavy fillers |
+| Utterance rate | ~10–14 / min | ~18–25 / min |
+| Session length | ~24 min | 2–6 hours |
+| Register | Wide, deliberate role language (役割語) | Casual, slang, net-speak, in-jokes |
+| Vocabulary | Fixed per series | Fixed per streamer, plus fast-moving memes |
+| Background audio | Music and SFX bed | Game audio, BGM, singing |
+| ASR difficulty | Moderate | Hard |
+| VOD available? | Yes, always | Sometimes — streams are live first |
+
+Consequences worth noting now:
+
+- [ ] **VTuber ASR is the harder problem by a wide margin.** Benchmark §2.1 candidates on VTuber audio, not on clean anime dialogue, or the numbers will flatter the engine.
+- [ ] **Singing.** VTubers sing, often for long stretches. ASR output on singing is unusable. Detect it and suppress subtitles rather than emitting garbage — a blank overlay reads as "no subtitles here", a hallucinated one reads as broken.
+- [ ] **Chat reading.** Streamers read Japanese superchats and comments aloud, switching register and referent mid-sentence with no audio cue. Expect pronoun resolution (§3.5) to fail hardest here.
+- [ ] **Role language matters more for anime**, slang and memes matter more for VTubers. This is likely two system prompts, not one.
+
+### 0.6 Remaining Stage 0 items
+
+- [ ] Live streams vs. VOD — see the fork in Open Questions; it decides whether ASR is needed at all for part of the scope
 
 ---
 
@@ -91,9 +136,12 @@ Hosted streaming ASR adds roughly **$0.15–0.50/hour** depending on vendor.
 
 ### 1.1 Capture
 - [x] ~~System audio loopback~~ — out of scope for the extension route (revisit only if a desktop build happens)
-- [ ] Browser tab audio via `chrome.tabCapture`, driven from an offscreen document
-- [ ] Re-pipe captured audio to an `AudioContext` destination so the tab is not muted
-- [ ] Microphone input path (secondary; `getUserMedia`, for calls rather than media playback)
+Two candidate paths — test both early, the second may remove several problems at once:
+- [ ] (a) **`chrome.tabCapture`** from an offscreen document. Well-trodden, but needs the offscreen document, needs a user gesture, and mutes the tab unless re-piped to an `AudioContext` destination.
+- [ ] (b) **Capture the `<video>` element directly** from a content script (`captureStream()` on the media element). If it works on YouTube's MSE-backed player it avoids the muting problem and the gesture requirement entirely. Unverified — MSE and cross-origin tainting may block it. **Prototype this before committing to (a).**
+
+- [ ] Detect and skip ad playback (§0.2)
+- [ ] Microphone input path — not needed for this scope; drop unless a non-YouTube source arrives
 
 ### 1.2 Voice activity detection
 - [ ] VAD library choice (Silero via ONNX Runtime Web, or WebRTC VAD)
@@ -120,7 +168,10 @@ Option (b) is likely right for Japanese, since acoustic silence and clause bound
 ### 2.1 Engine selection
 - [ ] Hosted streaming option: Deepgram, AssemblyAI, Gladia — the practical default for the extension route
 - [ ] In-browser option: whisper.cpp via WASM / `transformers.js` — zero marginal cost, but check whether the small models hit the Japanese accuracy bar and the latency budget
+- [ ] **YouTube's own caption track — free ASR, where it exists.** For VOD with a Japanese caption track (author-supplied or auto-generated), the transcript and its timings can be read directly, removing the ASR stage and its cost entirely. Author-supplied tracks are usually accurate; auto-generated Japanese is noticeably worse and needs quality-gating before it is trusted. Not available for live streams.
 - [ ] Benchmark all candidates on Japanese specifically — Japanese WER varies far more across engines than English does
+- [ ] **Benchmark on VTuber audio, not clean anime dialogue** (§0.5)
+- [ ] Detect singing / music-only stretches and suppress rather than transcribe (§0.5)
 - [ ] Benchmark: accuracy vs. latency vs. cost
 
 ### 2.2 Interim vs. final transcripts
@@ -145,6 +196,8 @@ Option (b) is likely right for Japanese, since acoustic silence and clause bound
 
 ### 3.2 Prompt caching
 - [ ] Cached prefix: glossary, character names, domain context
+- [ ] **The glossary is naturally per-series and per-streamer**, which makes it an unusually good cache prefix: stable for the whole of a 4-hour stream or a whole anime season, and reusable across sessions. Key the cached prefix by channel/series ID.
+- [ ] This is also where the highest-value quality wins live for this content — character names, unit names, catchphrases, and recurring in-jokes are exactly what a general model gets wrong and a glossary fixes cheaply.
 - [ ] Cache invalidation strategy as the glossary grows
 - [ ] Keep the glossary at the **front** of the prefix and the rolling window **after** the last cache breakpoint — prefix matching means any byte change invalidates everything downstream
 - [ ] Verify with `usage.cache_read_input_tokens`; if it is zero across repeated requests, something in the supposedly stable prefix is varying
@@ -255,4 +308,5 @@ What the user sees when things go wrong — the most visible failure surface, an
 - [ ] How much surrounding context is enough for pronoun resolution in a pro-drop language? Expect this to need more lines than intuition suggests.
 - [ ] Is speculative translation worth the token cost at the target latency? — **provisional answer: no, for Japanese** (§4.1). Confirm by measurement.
 - [ ] Does in-browser WASM ASR + Claude beat hosted ASR + a local LLM? Both are file-based in build step 1, so this is cheap to answer early — and the answer determines the whole cost structure. Pull it forward.
-- [ ] Can `tabCapture` reach DRM-protected audio? If not, what content is actually in scope?
+- [ ] **VOD and live are arguably two different products — is the first release both, or one?** For an archived video with a Japanese caption track, there is no ASR stage, no latency budget, and no streaming: read the transcript, translate it with full document context, render on the existing timings. That path is dramatically cheaper, more accurate, and simpler than the live pipeline, and it covers most anime plus VTuber stream archives. The live pipeline is only strictly required for watching a stream as it happens. **Recommendation: ship VOD first** — it is nearly build step 1 with a renderer bolted on, and it gets something usable in front of the user before the hard real-time work starts.
+- [ ] Can the `<video>` element be captured directly on YouTube (§1.1 path b), or is `tabCapture` required?
