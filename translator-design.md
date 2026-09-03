@@ -4,7 +4,7 @@ A browser extension that takes a YouTube video, obtains a Japanese transcript, t
 
 **Scope:** YouTube VOD, and nothing else. Not live streams (the real-time pipeline is preserved in [Appendix A](#appendix-a--deferred-live-stream-pipeline) rather than kept in the design), not other video sites, not local files, not microphone input. Build directly against YouTube — do not add abstraction layers for sources that are not in scope.
 
-**Key constraint:** the Claude API does not accept audio input. Where YouTube already provides a Japanese caption track there is no speech recognition stage at all; where it does not, ASR is a fallback that runs offline over the audio.
+**Key constraint:** the Claude API does not accept audio input. In practice this barely matters — YouTube auto-generates a Japanese caption track for nearly all target content (§1.4), so the input is already text. ASR is a fallback for the minority of videos with no track.
 
 **What VOD buys us.** No latency budget, no VAD, no streaming ASR, no speculative translation, no backpressure. In exchange we get the whole transcript up front — which is the single largest quality win available for Japanese (see §3.2), and cuts cost by roughly 4× (see §0.4).
 
@@ -53,17 +53,27 @@ The design that satisfies these is **translate-ahead-of-playhead**: translate th
 
 Costs collapse under VOD for three compounding reasons: the caption track makes ASR free, whole-document processing lets many lines share one request, and the Batch API halves what remains.
 
-Assumptions: ~20 subtitle lines per request with ~10 lines of preceding context; 1,500-token cached prefix (system prompt + glossary); ~25 tokens per Japanese line in, ~20 tokens per English line out.
+**Now grounded in a real measurement** rather than per-line estimates. The 7h53m archive measured in §1.3 contains 75,088 Japanese characters across 11,457 cues. Estimating ~1 token per Japanese character, ~1.5× input inflation for context overlap, and English output at roughly 4 characters per token:
 
-| Model | In / Out per MTok | Per request | Anime episode (~24 min, ~290 lines) | VTuber archive (~4 h, ~5,000 lines) |
-|---|---|---|---|---|
-| Haiku 4.5 | $1 / $5 | $0.0029 | $0.04 | $0.73 |
-| Sonnet 5 | $2 / $10 | $0.0058 | $0.09 | $1.45 |
-| Opus 5 | $5 / $25 | $0.0145 | **$0.22** | $3.63 |
+| | Estimated tokens |
+|---|---|
+| Transcript in (with context overlap) | ~115,000 |
+| English out | ~28,000 |
+| Cached-prefix reads (~570 chunk requests × 1,500) | ~855,000 |
 
-Halve the right-hand columns again if the Batch API is used (see §3.5).
+| Model | 7h53m VTuber archive | Per hour of video | 24-min anime episode |
+|---|---|---|---|
+| Haiku 4.5 | ~$0.36 | $0.05 | ~$0.02 |
+| Sonnet 5 | ~$0.72 | $0.09 | ~$0.04 |
+| Opus 5 | ~$1.79 | $0.23 | ~$0.09 |
 
-**This changes the model recommendation.** Under the real-time design, Opus 5 was ruled out at $2–3.33/hour. Here a full anime episode on Opus 5 costs about **22 cents** — roughly $0.55/hour of video, comfortably inside the old $1.00/hour ceiling that Sonnet 5 was breaking. Quality is now affordable.
+Halve these with the Batch API (see §3.5).
+
+**The earlier estimates were roughly 2× too pessimistic.** They assumed ~25 tokens per subtitle line; real auto-caption cues average **6.6 characters**, because they are scrolling fragments rather than sentences. Even the worst case — Opus 5 on an eight-hour archive — lands at $1.79, and every model sits inside the ceiling below.
+
+- [ ] These are estimates from a measured character count, not from `count_tokens`. Verify against real `usage` figures in build step 2.
+
+**Cost has stopped being a design constraint.** Under the real-time design, Opus 5 was ruled out at $2–3.33/hour. Here it is $0.23/hour — an anime episode costs about **nine cents** on the most capable model available. Nothing in this design should now be traded away to save tokens; pick the model on quality and stop optimising cost.
 
 Revised targets:
 
@@ -72,43 +82,76 @@ Revised targets:
 | Ceiling | $0.25 per hour of video |
 | Target | $0.10 per hour of video |
 
-- [ ] **Proposed default: Sonnet 5**, with Opus 5 as a "best quality" option that costs cents per episode and Haiku 4.5 as a bulk/batch mode. Confirm against real quality data in Stage 7 rather than assuming it now.
-- [ ] Long VTuber archives are still the expensive case — that is where batching and Haiku earn their place
+- [ ] **Proposed default: Opus 5.** At nine cents an episode the earlier reason to prefer Sonnet 5 has evaporated. Keep Sonnet 5 and Haiku 4.5 selectable for long archives and bulk runs. Confirm against real quality data in Stage 7.
+- [ ] Long archives remain the only case where model choice moves real money ($0.36 vs $1.79 for eight hours)
 - [ ] Cache the finished translation per video ID so a re-watch costs nothing (§4.2)
 
 ---
 
 ## Stage 1 — Transcript Acquisition
 
-The stage that replaces live capture. Three tiers, in order of preference.
+**This stage was tested against live YouTube on 2026-09-03 before the rest of the design was trusted. Findings below are measured, not assumed.** See §1.5 for the raw results.
 
-### 1.1 Tier 1 — Author-supplied Japanese caption track
+### 1.1 How caption access actually works
 
-The best case: accurate text, punctuated, sensibly segmented, with timings already aligned to speech. Free.
+Two separate things, with very different access rules:
 
-- [ ] Detect whether the video has a Japanese track, and whether it is author-supplied or auto-generated
-- [ ] **Access is the hard part.** The YouTube Data API's `captions.download` only works for videos the authenticated user *owns*, so it is unusable for third-party videos. The practical route is the same `timedtext` endpoint the player itself uses — which is undocumented and can change without notice.
-- [ ] Treat this as a **fragility risk, not a solved problem**: isolate it in one module, detect failure explicitly, and fall through to Tier 3 rather than breaking. The isolation is to contain YouTube changing the endpoint, not to support other sites.
+- **Track metadata** (which languages exist, manual or auto-generated) is embedded in the watch page HTML and readable with a plain HTTP GET. No auth, no tokens. Reliable across every video sampled.
+- **Track content** requires a **proof-of-origin token** (`pot`) on the `/api/timedtext` request. The `baseUrl` published in the page does *not* contain one.
 
-### 1.2 Tier 2 — Auto-generated Japanese caption track
+Without a valid `pot`, `timedtext` returns **HTTP 200 with an empty body** — a silent refusal, not an error. With the same URL plus a valid `pot`, the full transcript comes back. This was confirmed by replaying one URL with and without the token in the same browser session with the same cookies; nothing else differed.
 
-Available on most videos, including many VTuber archives, but materially worse:
+- [ ] **Never treat an empty 200 as "this video has no captions."** It is indistinguishable from success unless the body is checked. This is the single most likely silent-failure bug in the project.
 
-- [ ] **No punctuation and no sentence boundaries.** Japanese auto-captions arrive as an unpunctuated stream, which is a serious problem for a language where clause boundaries carry the grammar. A pre-pass is needed to restore sentence segmentation before translation — a good job for Claude (§3.1).
-- [ ] Segmentation is timing-driven, not linguistic — cues break mid-clause
-- [ ] Recognition errors on names, slang, and net-speak, which is exactly the VTuber vocabulary
-- [ ] Quality-gate before trusting it; decide when to fall through to Tier 3 instead
+### 1.2 The viable acquisition path
 
-### 1.3 Tier 3 — ASR fallback
+The `pot` is minted by YouTube's own attestation code inside the player. Do not try to reimplement it — ride the player instead:
 
-For videos with no usable Japanese track.
+1. Content script detects a Japanese track from the page metadata.
+2. Extension enables that track on the player. **Verified working** via `player.setOption('captions', 'track', …)`, and via the `c` keyboard shortcut when the API is uncooperative.
+3. The player issues its own `pot`-bearing `timedtext` request.
+4. Extension observes that request and re-fetches the URL. **Verified: replaying a captured `pot` URL returns the full transcript.**
 
-- [ ] Extract audio, run recognition offline (no streaming constraint — accuracy is the only axis that matters now, so the largest practical model wins)
-- [ ] Local option: faster-whisper / whisper.cpp, or WASM in-browser
-- [ ] Hosted option: whichever engine benchmarks best on Japanese
-- [ ] **Benchmark on VTuber audio, not clean anime dialogue** — that is the hard case
-- [ ] Detect singing and music-only stretches and suppress rather than transcribe; hallucinated lyrics are worse than a blank overlay
-- [ ] This tier reintroduces cost and processing time — surface both to the user before running it
+- [ ] Capture the URL by injecting into the **MAIN world at `document_start`**. A hook installed after page load does not work — the player captures its own reference to `fetch` before that, which was confirmed in testing (a post-load hook saw nothing while the request was visibly made).
+- [ ] `chrome.webRequest` observation is the alternative if main-world injection proves brittle
+- [ ] **Consequence: this cannot be done from a server or a plain CLI.** Caption content is only reachable from inside a real player session. The build order (below) is arranged around this.
+
+### 1.3 What the transcript looks like
+
+Measured on a 7h53m VTuber archive (`EmteTL5Ij8g`, 28,382 s):
+
+| | |
+|---|---|
+| Response | 4.34 MB, `fmt=json3` |
+| Cues | 11,457 (~24/min) |
+| Coverage | last cue at 28,377 s of 28,382 s — **the whole video in one request** |
+| Japanese characters | 75,088 |
+| Punctuation | **present** (`。` `、`) |
+
+- [x] **One request returns the entire track**, regardless of length. No pagination, no time-range parameters. Simplifies Stage 4 considerably.
+- [x] ~~Auto-generated Japanese has no punctuation~~ — **wrong, and now corrected.** YouTube's Japanese ASR punctuates. The punctuation-restoration pre-pass previously planned for §3.1 is **not needed**.
+- [ ] **Cues still break mid-clause** — average cue is ~6.6 characters, a scrolling fragment rather than a sentence (`"でももうに"` / `"もうなんか10年前の話だから。いや、"`). Stage 2 re-segmentation is still required, but it can now split on punctuation rather than having to infer boundaries.
+
+### 1.4 Track availability — measured
+
+20 videos sampled (10 long-form VTuber archives, 10 anime searches):
+
+| | VTuber | Anime |
+|---|---|---|
+| Author-supplied Japanese | 0 | 0 |
+| Auto-generated Japanese | 10 | 7 |
+| No Japanese track | 0 | 3 |
+
+- [x] ~~Tier 1, author-supplied tracks~~ — **effectively does not exist for this content.** Zero of twenty. Do not build a path for it; if one turns up it is just a higher-quality input to the same pipeline.
+- [ ] **Auto-generated is the primary and normal case**, not a degraded fallback. Design for it.
+- [ ] **ASR fallback is still needed** for roughly the 15% of anime with no track at all. Same as before: offline, accuracy-only, benchmarked on VTuber audio, with singing suppressed. Surface its cost and processing time to the user before running it.
+- [ ] Sample sizes are small and search-biased — re-check against a real watch list before relying on the percentages.
+
+### 1.5 Fragility and what breaks
+
+- [ ] `pot` is bot-defence machinery: undocumented, and expected to change. Riding the player's own request is more durable than minting tokens ourselves, but it is not stable ground.
+- [ ] Isolate all of this in one module with an explicit health check, so a break is detected and reported rather than surfacing as videos that silently have no subtitles
+- [ ] Watch for the empty-200 case specifically as the health signal
 
 ### 1.4 Content profiles
 
@@ -118,8 +161,8 @@ For videos with no usable Japanese track.
 | Lines | ~290 per episode | ~5,000 per 4-hour archive |
 | Register | Wide, deliberate role language (役割語) | Casual, slang, net-speak, in-jokes |
 | Vocabulary | Fixed per series | Fixed per streamer, plus fast-moving memes |
-| Caption tracks | Often author-supplied | Usually auto-generated only |
-| Likely tier | 1 | 2, sometimes 3 |
+| Caption tracks | Auto-generated only (0/10 manual) | Auto-generated, or none (3/10 had none) |
+| Measured cue rate | — | ~24/min |
 
 - [ ] **Chat reading.** Streamers read Japanese superchats aloud, switching register and referent mid-sentence with no cue. Expect pronoun resolution (§3.3) to fail hardest here.
 - [ ] Role language matters more for anime, slang and memes more for VTubers — likely two system prompts, not one
@@ -145,7 +188,7 @@ Having the whole transcript up front makes a first pass possible, and it is wher
 - [ ] **Pass 1 — analysis (once per video).** Read the full transcript and extract: character names and how they are written, speaker roles and relationships, recurring terms and in-jokes, register per speaker, and the domain. Output a compact glossary.
 - [ ] **Pass 2 — translation (per chunk).** Translate with that glossary as the cached prefix.
 - [ ] Pass 1 costs one request over a long input and pays for itself immediately in consistency — the same name rendered three different ways across an episode is the most obvious tell of a machine translation.
-- [ ] For Tier 2 input, fold punctuation restoration into pass 1
+- [x] ~~Fold punctuation restoration into pass 1~~ — not needed; YouTube's Japanese ASR output is already punctuated (§1.3)
 
 ### 3.2 Context — the VOD advantage
 
@@ -225,14 +268,14 @@ Chunk translation is embarrassingly parallel and not latency-critical for the bl
 ## Stage 6 — Cost, Fallback, and Failure
 
 - [ ] Token accounting per video; validate against the §0.4 prediction
-- [ ] Show estimated cost **before** translating a long archive — a 4-hour VTuber VOD is not a 22-cent anime episode
+- [ ] Show estimated cost **before** translating a long archive — an eight-hour VOD is not a nine-cent anime episode
 - [ ] Model selector: Haiku 4.5 / Sonnet 5 / Opus 5, with per-video cost shown
 - [x] ~~Local model fallback (Gemma, Qwen)~~ — dropped. It existed to cap cost under the live design at $2–3/hour; at $0.04–0.22 per episode there is nothing left to cap, and a second translation backend would double the prompt-tuning and evaluation work for no benefit.
 
 ### 6.1 Degradation behaviour
 
 - [ ] No Japanese caption track and ASR unavailable → say so plainly rather than failing silently
-- [ ] `timedtext` access breaks (§1.1) → detect and fall through to Tier 3, do not present an empty transcript as success
+- [ ] `timedtext` returns an empty 200 (§1.1) → this is a **refusal, not an empty video**. Detect it explicitly, report it, and fall through to ASR. Never present it as success.
 - [ ] Claude API returns 429 → back off; the viewer keeps watching, so degrade to "translating…" rather than stalling playback
 - [ ] Translation falls behind the playhead → show the gap honestly
 - [ ] Network drops mid-video → resume from the last completed chunk, never restart
@@ -247,7 +290,8 @@ Chunk translation is embarrassingly parallel and not latency-critical for the bl
 - [ ] Score transcript-only and translation-only separately to isolate failures
 - [ ] Track **pronoun-resolution accuracy** as its own metric — the failure mode most visible to a viewer (§3.3)
 - [ ] Track **name and term consistency** across a whole video — the second most visible, and what §3.1 exists to fix
-- [ ] Compare tiers: does Tier 2 (auto-captions) plus a strong model beat Tier 3 (good ASR) plus the same model?
+- [ ] **Baseline to beat: YouTube's own auto-translated English captions.** Observed during §1 testing — YouTube will auto-translate the Japanese ASR track to English natively, for free, with one click. That is the honest comparison, not "subtitles vs. no subtitles". If this project does not clearly beat it on pronoun resolution, names, and register, it has no reason to exist. Put it in the reference set as a scored competitor from day one.
+- [ ] Compare inputs: does an auto-generated caption track plus a strong model beat proper ASR plus the same model?
 - [ ] Compare models on the same transcript — Opus 5 costs cents per episode here, so the quality question is worth settling properly
 - [ ] Prompt version comparison harness
 
@@ -255,12 +299,14 @@ Chunk translation is embarrassingly parallel and not latency-critical for the bl
 
 ## Build Order
 
-1. **CLI, file-based** — a Japanese `.srt` in, an English `.srt` out. A development scaffold for getting §3 right (the two-pass design, the prompt, the Japanese handling in §3.3) without YouTube in the loop, not a mode that ships. Build the Stage 7 reference set in this step.
-2. **Transcript acquisition** — add Tier 1/2 fetching so a YouTube URL in produces an English `.srt` out. Still a CLI. Add Tier 3 only if the coverage gap demands it.
-3. **Extension** — wrap step 2 in the extension, render the result over the player, handle seeking.
+**Revised after the §1 testing.** The original plan had step 2 as a CLI taking a YouTube URL. That is not possible: caption content requires a `pot` token only obtainable from inside a live player session (§1.2). The extension shell therefore has to come earlier.
+
+1. **Extension shell — transcript extraction only.** Content script, main-world injection at `document_start`, enable the Japanese track, capture the `pot` URL, fetch the track, dump json3 to a file. No translation, no rendering. This is the risky part and it is now the first thing built, not the third.
+2. **CLI translation core** — Japanese json3 (or `.srt`) in, English `.srt` out. Where §3 gets built: two-pass design, prompt, the Japanese handling in §3.3. Runs offline against files captured in step 1, so it iterates fast and costs nothing to re-run. Build the Stage 7 reference set here.
+3. **Join them** — extension calls the translation core, renders over the player, handles seeking.
 4. **Pipelining and polish** — ahead-of-playhead scheduling, result caching, cost display, batch mode.
 
-Step 2 is the first genuinely useful artifact, and it settles the §1.1 risk before any extension code exists.
+Steps 1 and 2 are independent and can proceed in either order once step 1 has produced a few captured transcripts to work against.
 
 ---
 
