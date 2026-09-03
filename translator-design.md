@@ -1,8 +1,12 @@
-# Real-Time Voice Translation Subtitles
+# Japanese → English Subtitles for YouTube VOD
 
-A pipeline that captures live audio, transcribes it with a speech recognition model, translates the text with the Claude API, and renders the result as overlay subtitles.
+A browser extension that takes a YouTube video, obtains a Japanese transcript, translates it with the Claude API, and renders English subtitles over the player.
 
-**Key constraint:** the Claude API does not accept audio input. Speech recognition and translation are two separate stages, and the boundary between them is where most of the interesting engineering lives.
+**Scope note:** this is the VOD-only design. Live streams are deferred — the real-time pipeline is preserved in [Appendix A](#appendix-a--deferred-live-stream-pipeline) so it can be picked up later.
+
+**Key constraint:** the Claude API does not accept audio input. Where YouTube already provides a Japanese caption track there is no speech recognition stage at all; where it does not, ASR is a fallback that runs offline over the audio.
+
+**What VOD buys us.** No latency budget, no VAD, no streaming ASR, no speculative translation, no backpressure. In exchange we get the whole transcript up front — which is the single largest quality win available for Japanese (see §3.2), and cuts cost by roughly 4× (see §0.4).
 
 ---
 
@@ -10,303 +14,283 @@ A pipeline that captures live audio, transcribes it with a speech recognition mo
 
 ### 0.1 Languages
 
-- **Source: Japanese (priority).** Chinese and Korean are possible later additions, but every decision below is made for Japanese first.
+- **Source: Japanese.** Chinese and Korean are possible later additions.
 - **Target: English.**
-- [ ] Keep the ASR engine choice language-pluggable so CN/KR can be added without a rewrite
-- [ ] Keep the translation system prompt per-source-language (the JA prompt will not transfer to CN — see §3.5)
+- [ ] Keep the translation system prompt per-source-language (the JA prompt will not transfer to CN — see §3.3)
 
-### 0.2 Platform
+### 0.2 Platform and content
 
-- **Browser extension (Chrome, Manifest V3).** Audio comes from `chrome.tabCapture`; subtitles render as an injected overlay.
-- This removes most of §1.1 (no OS loopback drivers) and §5.1 (no Electron/Tauri window), at the cost of being limited to tab audio.
-- [ ] Confirm the extension can be MV3-only, or whether a desktop build is a later target
+- **Browser extension (Chrome, Manifest V3).**
+- **YouTube VOD only** — archived anime and VTuber stream archives. Live streams deferred; non-YouTube audio deferred.
+- [ ] Keep transcript acquisition behind an interface so a second source can be added without touching the rest of the pipeline
 
-#### Extension-specific constraints (decide before Stage 1)
+Because everything runs offline relative to playback, the MV3 service-worker lifetime problem mostly disappears: work is request-shaped and short-lived rather than a persistent capture session. Confirm this holds for long VTuber archives, where a single video's translation may take minutes.
 
-- [ ] **MV3 service worker termination.** The worker is killed after ~30s idle, which would drop the capture and the ASR WebSocket mid-session. Persistent audio work has to live in an **offscreen document**, not the service worker.
-- [ ] **`tabCapture` re-routes audio.** Capturing mutes the tab unless the stream is piped back to an `AudioContext` destination. Must be handled or the user loses their audio.
-- [ ] **Requires a user gesture** per tab to start capture — affects the activation UX.
-- [x] ~~**DRM-protected media.**~~ Resolved by the §0.5 content decision: ordinary YouTube uploads and live streams are not Widevine-protected, so capture is available. (YouTube *movies and rentals* do use EME — out of scope.)
-- [ ] **API key handling.** An API key shipped inside an extension is public. Either proxy requests through a relay backend, or require users to supply their own key. This is an architecture decision, not a detail — pick one before Stage 3.
-- [ ] **Overlay isolation.** Inject into a shadow DOM so host-page CSS and CSP cannot break the subtitles, and so the overlay survives the page's own fullscreen video container.
+#### YouTube host-page constraints
 
-#### YouTube-specific (the only host page in scope for now)
+- [ ] **Anchor the overlay to the player**, not the page — it gets theatre mode and fullscreen for free
+- [ ] **Handle seeking.** The user can jump anywhere in the video at any time; the renderer must resolve a cue for an arbitrary timestamp instantly, which means the translation should be stored as a complete timed list, not a stream.
+- [ ] Ads interrupt playback but not our data — the overlay must hide during ad playback rather than showing a cue at the wrong time
+- [ ] **Overlay isolation.** Inject into a shadow DOM so host-page CSS and CSP cannot break the subtitles.
+- [ ] **API key handling.** An API key shipped inside an extension is public. Either proxy through a relay backend, or require users to supply their own key. Decide before Stage 3.
 
-- [ ] **Ads interrupt the audio.** The pipeline will happily transcribe and translate ad reads, burning tokens and putting nonsense on screen. Detect ad playback (the player carries an `ad-showing` state) and pause capture. Cheap to fix, embarrassing if missed.
-- [ ] **Anchor the overlay to the player**, not the page — YouTube's player is a stable, well-known container, and anchoring there gets theatre mode and fullscreen for free.
-- [ ] **Handle player events:** seek, pause, playback-rate change, and quality-change buffering all break an in-flight streaming pipeline. Seeking in particular must flush the whole queue.
-- [ ] YouTube's own live delay (typically 5–30 s) is irrelevant to us — our budget is measured relative to the audio the viewer actually hears.
+### 0.3 Timing targets
 
-### 0.3 Latency budget
-
-Measured from **end of the spoken utterance** to **subtitle painted on screen**.
+Latency is no longer a per-utterance figure. Two targets replace it:
 
 | Target | Value |
 |---|---|
-| p50 | ≤ 1.5 s |
-| p95 | ≤ 2.5 s |
-| Hard drop | > 4.0 s — discard the line rather than fall further behind |
+| Time to first subtitle (user presses play → subtitles start) | ≤ 15 s |
+| Translation stays ahead of the playhead by | ≥ 60 s |
+| Full 24-minute episode translated | ≤ 90 s |
 
-Predicted breakdown (browser extension + hosted streaming ASR):
+The design that satisfies these is **translate-ahead-of-playhead**: translate the first couple of minutes, start rendering, and keep working forward faster than real time. Full-video-then-play is simpler but makes the user wait; progressive is barely harder and feels instant.
 
-| Stage | Typical | Notes |
-|---|---|---|
-| `tabCapture` → AudioWorklet → resample to 16 kHz | 20–50 ms | negligible |
-| **VAD endpointing (trailing silence)** | **300–600 ms** | dominates the budget; the main tuning knob |
-| ASR final emitted after endpoint | 150–400 ms | |
-| Fragment merge / batching hold | 0–300 ms | §3.4 |
-| Network + Claude time-to-first-token | 250–500 ms | with a warm cached prefix |
-| Generate ~25 output tokens | 250–400 ms | one subtitle line |
-| Paint | 16–50 ms | |
-| **End-to-end** | **~1.0–2.3 s** | |
+- [ ] Decide: progressive (translate ahead of playhead) or blocking (translate all, then play)
+- [ ] Handle a seek past the translated region — show a brief "translating…" state rather than nothing
 
-**Why 1.5 s and not 0.5 s.** Professional live captioning runs 3–5 s behind; simultaneous interpreters sit 2–4 s behind the speaker. At 1.5 s this pipeline is already ahead of a human interpreter, and below roughly 1 s the improvement stops being perceptible because the viewer needs reading time regardless. Chasing sub-second latency costs tokens (speculative translation) and accuracy (early endpointing) for no felt benefit.
+### 0.4 Cost
 
-- [ ] Instrument every row above separately from day one (§4)
-- [ ] Report p50/p95/p99, never the mean
+Costs collapse under VOD for three compounding reasons: the caption track makes ASR free, whole-document processing lets many lines share one request, and the Batch API halves what remains.
 
-### 0.4 Cost ceiling
+Assumptions: ~20 subtitle lines per request with ~10 lines of preceding context; 1,500-token cached prefix (system prompt + glossary); ~25 tokens per Japanese line in, ~20 tokens per English line out.
 
-| Target | Value |
-|---|---|
-| Ceiling | $1.00 per hour of audio, all-in (ASR + translation) |
-| Target | $0.60 per hour |
-
-Predicted translation cost. Per request ≈ 1,500-token cached prefix (system prompt + glossary), ~280 uncached tokens (rolling window + current line), ~25 output tokens. Utterance rates follow the two content profiles in §0.5.
-
-| Model | Input / Output per MTok | Per request | Anime (~720 utt/hr) | VTuber (~1,200 utt/hr) |
+| Model | In / Out per MTok | Per request | Anime episode (~24 min, ~290 lines) | VTuber archive (~4 h, ~5,000 lines) |
 |---|---|---|---|---|
-| Haiku 4.5 | $1 / $5 | $0.00056 | $0.40 | $0.67 |
-| Sonnet 5 | $2 / $10 | $0.00111 | $0.80 | $1.33 |
-| Opus 5 | $5 / $25 | $0.00278 | $2.00 | $3.33 |
+| Haiku 4.5 | $1 / $5 | $0.0029 | $0.04 | $0.73 |
+| Sonnet 5 | $2 / $10 | $0.0058 | $0.09 | $1.45 |
+| Opus 5 | $5 / $25 | $0.0145 | **$0.22** | $3.63 |
 
-Hosted streaming ASR adds roughly **$0.15–0.50/hour** depending on vendor.
-- [ ] **Verify current ASR vendor pricing** — the range above is unverified.
+Halve the right-hand columns again if the Batch API is used (see §3.5).
 
-**Session length matters more than the hourly rate.** A 24-minute anime episode and a 4-hour VTuber stream sit an order of magnitude apart, and the per-hour figure hides that:
+**This changes the model recommendation.** Under the real-time design, Opus 5 was ruled out at $2–3.33/hour. Here a full anime episode on Opus 5 costs about **22 cents** — roughly $0.55/hour of video, comfortably inside the old $1.00/hour ceiling that Sonnet 5 was breaking. Quality is now affordable.
 
-| Session | Haiku 4.5 | Sonnet 5 | (incl. ASR) |
-|---|---|---|---|
-| One anime episode (~24 min) | $0.22 | $0.38 | +$0.06–0.20 |
-| One 4-hour VTuber stream | $2.66 | $5.33 | +$0.60–2.00 |
+Revised targets:
 
-**This breaks the $1.00/hr ceiling for VTuber content on Sonnet 5** ($1.33/hr translation alone, before ASR). Three options, to be decided in Stage 7 with real quality data:
-- [ ] (a) Default VTuber content to Haiku 4.5 and anime to Sonnet 5 — cheapest route that keeps the ceiling
-- [ ] (b) Raise the ceiling for live streams and accept ~$1.80/hr
-- [ ] (c) Cut per-request cost instead: batch 2–3 utterances per call (VTuber speech is fast and fragmentary, so merging is natural) and shrink the rolling window. Roughly a 40% saving, at some cost in latency and context.
+| Target | Value |
+|---|---|
+| Ceiling | $0.25 per hour of video |
+| Target | $0.10 per hour of video |
 
-Option (c) is worth measuring first, since it helps both profiles and does not trade away model quality.
+- [ ] **Proposed default: Sonnet 5**, with Opus 5 as a "best quality" option that costs cents per episode and Haiku 4.5 as a bulk/batch mode. Confirm against real quality data in Stage 7 rather than assuming it now.
+- [ ] Long VTuber archives are still the expensive case — that is where batching and Haiku earn their place
+- [ ] Cache the finished translation per video ID so a re-watch costs nothing (§4.2)
 
-**Cache economics.** Cache reads cost 0.1× base input; writes cost 1.25× (5-minute TTL). Because subtitle traffic is continuous, consecutive requests start well under 5 minutes apart and keep the default cache alive indefinitely — so the 1.25× write is paid roughly **once per session**, and the 1-hour TTL (2× write) buys nothing. Cache write cost is negligible here and can be left out of the per-hour model.
+---
 
-**Proposed default:** Sonnet 5 + hosted ASR ≈ $0.95/hr at the low utterance rate. Haiku 4.5 as an explicit "cost mode". Opus 5 reserved for generating the Stage 7 reference translations, not for live use.
-- [ ] Confirm the model choice against real quality data in Stage 7 rather than assuming it now
+## Stage 1 — Transcript Acquisition
 
-### 0.5 Content profiles
+The stage that replaces live capture. Three tiers, in order of preference.
 
-**In scope: anime and VTuber streams on YouTube.** Audio sources outside YouTube are a later exploration and are not a design constraint now — but keep the capture layer behind an interface so a second source can be added without touching the rest of the pipeline.
+### 1.1 Tier 1 — Author-supplied Japanese caption track
 
-The two profiles are different enough to need separate tuning, and possibly separate models:
+The best case: accurate text, punctuated, sensibly segmented, with timings already aligned to speech. Free.
 
-| | Anime | VTuber stream |
+- [ ] Detect whether the video has a Japanese track, and whether it is author-supplied or auto-generated
+- [ ] **Access is the hard part.** The YouTube Data API's `captions.download` only works for videos the authenticated user *owns*, so it is unusable for third-party videos. The practical route is the same `timedtext` endpoint the player itself uses — which is undocumented and can change without notice.
+- [ ] Treat this as a **fragility risk, not a solved problem**: wrap it behind an interface, detect failure explicitly, and fall through to Tier 3 rather than breaking.
+
+### 1.2 Tier 2 — Auto-generated Japanese caption track
+
+Available on most videos, including many VTuber archives, but materially worse:
+
+- [ ] **No punctuation and no sentence boundaries.** Japanese auto-captions arrive as an unpunctuated stream, which is a serious problem for a language where clause boundaries carry the grammar. A pre-pass is needed to restore sentence segmentation before translation — a good job for Claude (§3.1).
+- [ ] Segmentation is timing-driven, not linguistic — cues break mid-clause
+- [ ] Recognition errors on names, slang, and net-speak, which is exactly the VTuber vocabulary
+- [ ] Quality-gate before trusting it; decide when to fall through to Tier 3 instead
+
+### 1.3 Tier 3 — ASR fallback
+
+For videos with no usable Japanese track.
+
+- [ ] Extract audio, run recognition offline (no streaming constraint — accuracy is the only axis that matters now, so the largest practical model wins)
+- [ ] Local option: faster-whisper / whisper.cpp, or WASM in-browser
+- [ ] Hosted option: whichever engine benchmarks best on Japanese
+- [ ] **Benchmark on VTuber audio, not clean anime dialogue** — that is the hard case
+- [ ] Detect singing and music-only stretches and suppress rather than transcribe; hallucinated lyrics are worse than a blank overlay
+- [ ] This tier reintroduces cost and processing time — surface both to the user before running it
+
+### 1.4 Content profiles
+
+| | Anime | VTuber archive |
 |---|---|---|
 | Speech | Scripted, clearly enunciated | Unscripted, fast, overlapping, heavy fillers |
-| Utterance rate | ~10–14 / min | ~18–25 / min |
-| Session length | ~24 min | 2–6 hours |
+| Lines | ~290 per episode | ~5,000 per 4-hour archive |
 | Register | Wide, deliberate role language (役割語) | Casual, slang, net-speak, in-jokes |
 | Vocabulary | Fixed per series | Fixed per streamer, plus fast-moving memes |
-| Background audio | Music and SFX bed | Game audio, BGM, singing |
-| ASR difficulty | Moderate | Hard |
-| VOD available? | Yes, always | Sometimes — streams are live first |
+| Caption tracks | Often author-supplied | Usually auto-generated only |
+| Likely tier | 1 | 2, sometimes 3 |
 
-Consequences worth noting now:
-
-- [ ] **VTuber ASR is the harder problem by a wide margin.** Benchmark §2.1 candidates on VTuber audio, not on clean anime dialogue, or the numbers will flatter the engine.
-- [ ] **Singing.** VTubers sing, often for long stretches. ASR output on singing is unusable. Detect it and suppress subtitles rather than emitting garbage — a blank overlay reads as "no subtitles here", a hallucinated one reads as broken.
-- [ ] **Chat reading.** Streamers read Japanese superchats and comments aloud, switching register and referent mid-sentence with no audio cue. Expect pronoun resolution (§3.5) to fail hardest here.
-- [ ] **Role language matters more for anime**, slang and memes matter more for VTubers. This is likely two system prompts, not one.
-
-### 0.6 Remaining Stage 0 items
-
-- [ ] Live streams vs. VOD — see the fork in Open Questions; it decides whether ASR is needed at all for part of the scope
+- [ ] **Chat reading.** Streamers read Japanese superchats aloud, switching register and referent mid-sentence with no cue. Expect pronoun resolution (§3.3) to fail hardest here.
+- [ ] Role language matters more for anime, slang and memes more for VTubers — likely two system prompts, not one
 
 ---
 
-## Stage 1 — Audio Capture and Chunking
+## Stage 2 — Document Preparation
 
-### 1.1 Capture
-- [x] ~~System audio loopback~~ — out of scope for the extension route (revisit only if a desktop build happens)
-Two candidate paths — test both early, the second may remove several problems at once:
-- [ ] (a) **`chrome.tabCapture`** from an offscreen document. Well-trodden, but needs the offscreen document, needs a user gesture, and mutes the tab unless re-piped to an `AudioContext` destination.
-- [ ] (b) **Capture the `<video>` element directly** from a content script (`captureStream()` on the media element). If it works on YouTube's MSE-backed player it avoids the muting problem and the gesture requirement entirely. Unverified — MSE and cross-origin tainting may block it. **Prototype this before committing to (a).**
-
-- [ ] Detect and skip ad playback (§0.2)
-- [ ] Microphone input path — not needed for this scope; drop unless a non-YouTube source arrives
-
-### 1.2 Voice activity detection
-- [ ] VAD library choice (Silero via ONNX Runtime Web, or WebRTC VAD)
-- [ ] Utterance boundary detection
-- [ ] Silence-based chunking rather than fixed intervals
-- [ ] Minimum / maximum utterance length handling
-- [ ] **Japanese pause behaviour:** frequent short mid-sentence pauses (fillers, `〜ね`, `えっと`) will trip an aggressive endpointer and over-fragment clauses. Start around 500 ms of trailing silence and tune against real audio.
-
-### 1.3 Buffering
-- [ ] Ring buffer sizing
-- [ ] Sample rate and format normalisation (AudioWorklet → 16 kHz mono PCM)
-
-### 1.4 Segmentation ownership
-**Decide once, not twice.** §1.2 splits on silence and §3.4 merges fragments back together — the same decision made at two layers. Pick one:
-- [ ] (a) VAD emits translation units directly, with no merging downstream, or
-- [ ] (b) an explicit segmenter stage sits between ASR and translation and owns all boundary decisions
-
-Option (b) is likely right for Japanese, since acoustic silence and clause boundaries diverge often (see §3.5).
-
----
-
-## Stage 2 — Speech Recognition
-
-### 2.1 Engine selection
-- [ ] Hosted streaming option: Deepgram, AssemblyAI, Gladia — the practical default for the extension route
-- [ ] In-browser option: whisper.cpp via WASM / `transformers.js` — zero marginal cost, but check whether the small models hit the Japanese accuracy bar and the latency budget
-- [ ] **YouTube's own caption track — free ASR, where it exists.** For VOD with a Japanese caption track (author-supplied or auto-generated), the transcript and its timings can be read directly, removing the ASR stage and its cost entirely. Author-supplied tracks are usually accurate; auto-generated Japanese is noticeably worse and needs quality-gating before it is trusted. Not available for live streams.
-- [ ] Benchmark all candidates on Japanese specifically — Japanese WER varies far more across engines than English does
-- [ ] **Benchmark on VTuber audio, not clean anime dialogue** (§0.5)
-- [ ] Detect singing / music-only stretches and suppress rather than transcribe (§0.5)
-- [ ] Benchmark: accuracy vs. latency vs. cost
-
-### 2.2 Interim vs. final transcripts
-- [ ] Handle rewriting interim results
-- [ ] Stability heuristic: when is an interim safe to forward?
-- [ ] Timeout rule for stalled finals
-- [ ] Note: for Japanese, interim stability is worth much less than it sounds — see §4.1
-
-### 2.3 Metadata
-- [ ] Utterance-level timestamps (word-level is less meaningful for Japanese, which has no spaces — engines segment inconsistently)
-- [ ] Speaker diarisation (optional, but valuable for multi-speaker content, where pro-drop makes speaker identity load-bearing — see §3.5)
-- [ ] Confidence scores for downstream filtering
+- [ ] Normalise all three tiers into one internal format: a list of `{start, end, text}` cues
+- [ ] **Re-segment into translation units.** Caption cues are timed for reading, not for grammar; a Japanese clause routinely spans two cues. Merge cues into complete sentences before translation, and keep a mapping back to the original timings.
+- [ ] Restore punctuation and sentence boundaries for Tier 2 input (§1.2)
+- [ ] Chunk into requests: ~20 lines per request with ~10 lines of preceding overlap for context
+- [ ] Decide chunk boundaries on sentence boundaries, never mid-clause
 
 ---
 
 ## Stage 3 — Translation with Claude
 
-### 3.1 Request design
-- [ ] Streaming responses
-- [ ] System prompt: domain, register, output format constraints
-- [ ] Suppress preamble and commentary in output
+### 3.1 Two-pass design
 
-### 3.2 Prompt caching
-- [ ] Cached prefix: glossary, character names, domain context
-- [ ] **The glossary is naturally per-series and per-streamer**, which makes it an unusually good cache prefix: stable for the whole of a 4-hour stream or a whole anime season, and reusable across sessions. Key the cached prefix by channel/series ID.
-- [ ] This is also where the highest-value quality wins live for this content — character names, unit names, catchphrases, and recurring in-jokes are exactly what a general model gets wrong and a glossary fixes cheaply.
-- [ ] Cache invalidation strategy as the glossary grows
-- [ ] Keep the glossary at the **front** of the prefix and the rolling window **after** the last cache breakpoint — prefix matching means any byte change invalidates everything downstream
-- [ ] Verify with `usage.cache_read_input_tokens`; if it is zero across repeated requests, something in the supposedly stable prefix is varying
+Having the whole transcript up front makes a first pass possible, and it is where most of the quality comes from:
 
-### 3.3 Context management
-- [ ] Rolling window of previously translated lines
-- [ ] Window size vs. token cost tradeoff
-- [ ] **The rolling window defeats caching for its own tokens.** The glossary prefix caches fine, but the window differs on every request, so those ~250 tokens are billed at full input price every time. That is already accounted for in the §0.4 model — just do not expect caching to make context free.
+- [ ] **Pass 1 — analysis (once per video).** Read the full transcript and extract: character names and how they are written, speaker roles and relationships, recurring terms and in-jokes, register per speaker, and the domain. Output a compact glossary.
+- [ ] **Pass 2 — translation (per chunk).** Translate with that glossary as the cached prefix.
+- [ ] Pass 1 costs one request over a long input and pays for itself immediately in consistency — the same name rendered three different ways across an episode is the most obvious tell of a machine translation.
+- [ ] For Tier 2 input, fold punctuation restoration into pass 1
 
-### 3.4 Batching
-- [ ] Merge short fragments before dispatch — but see §1.4; decide which layer owns this
-- [ ] Sentence-completion heuristics (for Japanese: clause-final verb forms and sentence-ending particles `よ` / `ね` / `か` / `から`, not silence alone)
+### 3.2 Context — the VOD advantage
 
-### 3.5 Japanese-specific translation problems
+Under the real-time design, context was a backwards-looking rolling window and pronoun resolution was guesswork. Here the model can see **ahead** as well as behind.
 
-These are the top quality risks, ahead of anything in the ASR stage.
+- [ ] Include following lines as well as preceding ones in each chunk
+- [ ] This is the single biggest quality win available for Japanese: a dropped subject is frequently disambiguated by what comes *next*, which a live pipeline can never see
+- [ ] Tune the window sizes; they are cheap here, unlike in the live design
 
-- [ ] **Pro-drop.** Japanese omits subjects constantly, and unlike Spanish there is no verb agreement to recover person from. 「行った」 is "I / you / he / she / they went" with no marking at all. English requires a pronoun, so the model must infer one on nearly every line — and a wrong guess is a visible, jarring error. This makes §3.3's context window mandatory rather than an optimisation, and argues for a larger window (6–10 lines) than Chinese would need.
-- [ ] **Recover person from honorifics, not just context.** Giving and receiving verbs and keigo encode direction: 「くれる」 (someone did it for me) vs 「あげる」 (I did it for someone); humble forms mark the speaker, honorific forms mark the addressee. Teach these in the system prompt — they resolve many pronouns that the surrounding lines cannot.
-- [ ] **Verb-final word order (SOV).** Negation, tense, and politeness all land on the final morphemes. This breaks fragment-by-fragment translation: a clause translated before its ending can invert in meaning. Never dispatch a partial clause.
-- [ ] **Role language (役割語).** Fiction encodes character through speech style — pronoun choice (`俺` / `僕` / `私` / `わし`), sentence-ending particles, dialect. Flattening every character into neutral English loses most of the characterisation. Decide how much of this to attempt and put the policy in the system prompt.
-- [ ] **Register.** Casual / polite / humble / honorific are grammatically marked in Japanese and only lexically available in English. Define a consistent mapping rather than letting it drift line to line.
-- [ ] **Sentence-boundary mismatch.** Japanese and English clause order differ enough that a strict one-in-one-out mapping reads badly. Decide whether the output may merge or split relative to source lines, and how the renderer handles it when it does.
+### 3.3 Japanese-specific translation problems
 
----
+These remain the top quality risks.
 
-## Stage 4 — Latency Engineering
+- [ ] **Pro-drop.** Japanese omits subjects constantly, and unlike Spanish there is no verb agreement to recover person from. 「行った」 is "I / you / he / she / they went" with no marking at all. English forces a pronoun on nearly every line, and a wrong guess is visible and jarring. §3.2's forward context and §3.1's speaker map are the mitigations.
+- [ ] **Recover person from honorifics, not just context.** Giving and receiving verbs and keigo encode direction: 「くれる」 (someone did it for me) vs 「あげる」 (I did it for someone); humble forms mark the speaker, honorific forms mark the addressee. Teach these in the system prompt — they resolve many pronouns that surrounding lines cannot.
+- [ ] **Verb-final word order (SOV).** Negation, tense, and politeness land on the final morphemes. Never split a chunk mid-clause (§2).
+- [ ] **Role language (役割語).** Fiction encodes character through speech style — pronoun choice (`俺` / `僕` / `私` / `わし`), sentence-ending particles, dialect. Flattening every character into neutral English loses most of the characterisation. Decide how much to attempt; the §3.1 speaker map makes it achievable.
+- [ ] **Register.** Casual / polite / humble / honorific are grammatically marked in Japanese and only lexically available in English. Define a consistent mapping rather than letting it drift.
+- [ ] **Sentence-boundary mismatch.** Japanese and English clause order differ enough that a strict one-in-one-out mapping reads badly. Allow merging and splitting, and remap timings accordingly (§5.2).
 
-- [ ] Async task separation: capture / ASR / translation queues
-- [ ] Backpressure when translation falls behind — drop lines rather than accumulate lag (see the §0.3 hard drop)
-- [ ] Per-stage instrumentation matching the §0.3 table
-- [ ] Latency distribution, not just averages
+### 3.4 Request design and caching
 
-### 4.1 Speculative translation — likely NOT worth it for Japanese
+- [ ] System prompt: domain, register, output format constraints; suppress preamble and commentary
+- [ ] Return structured output (line ID → translation) so lines can be remapped to timings reliably rather than by position
+- [ ] **Cached prefix: the §3.1 glossary**, which is per-video and stable for the whole run — an ideal cache prefix, reused across every chunk request
+- [ ] Keep the glossary at the front and the per-chunk lines after the last cache breakpoint
+- [ ] Verify with `usage.cache_read_input_tokens`; if it is zero across chunks, something in the prefix is varying
+- [ ] Continuous chunk requests keep the default 5-minute TTL warm, so the 1.25× write is paid once per video and the 1-hour TTL buys nothing
 
-Speculative translation of stable interims assumes that a growing transcript prefix has stable meaning. **For Japanese that assumption is false**: because the verb is final, 食べます / 食べません / 食べたくなかった diverge only at the end, so a speculative translation of the prefix is about as likely to be inverted as correct. The token cost is roughly 2–3× (every revised interim is another request) for a saving of perhaps 300–500 ms — which the §0.3 budget already absorbs.
+### 3.5 Batch API
 
-- [ ] Treat this as **deferred, not planned.** Revisit only if measured p95 exceeds 2.5 s.
-- [ ] If revisited, speculate on **clause completion** (predicting the ending from context) rather than on token-prefix stability
-- [ ] This partially answers Open Question 2 — record the measurement once Stage 4 is instrumented
+Chunk translation is embarrassingly parallel and not latency-critical for the blocking design — a natural fit for the Batch API at 50% cost.
+
+- [ ] Incompatible with translate-ahead-of-playhead (§0.3), which needs results promptly
+- [ ] Likely both: synchronous for "translate this now", batch for "queue this for later" or bulk pre-translation of a series
+- [ ] Decide after §0.3 is settled
 
 ---
 
-## Stage 5 — Subtitle Rendering
+## Stage 4 — Pipelining and Storage
+
+### 4.1 Ahead-of-playhead scheduling
+- [ ] Translate forward from the playhead, prioritising the next chunk the viewer will reach
+- [ ] Re-prioritise on seek
+- [ ] Cancel or deprioritise work the viewer has skipped past
+- [ ] Show progress honestly — a stalled pipeline must not look like a silent passage
+
+### 4.2 Result caching
+- [ ] Store completed translations keyed by video ID (and caption-track version) so a re-watch is free
+- [ ] Decide where: local browser storage only, or a shared backend
+- [ ] A shared backend makes repeat views free across users but turns this into a service with hosting, and raises questions about redistributing translations of third-party content — a product decision, not a technical one
+- [ ] Allow export to `.srt`
+
+---
+
+## Stage 5 — Rendering
 
 ### 5.1 Surface
-- [ ] Injected overlay div in a shadow DOM (extension route)
-- [ ] Survives the host page's fullscreen video container
-- [ ] Positioning and persistence across sessions
+- [ ] Overlay div in a shadow DOM, anchored to the YouTube player
+- [ ] Survives fullscreen and theatre mode
+- [ ] Hide during ads
+- [ ] User-configurable position and appearance
 
 ### 5.2 Display logic
-- [ ] Reading-speed pacing (~20 chars/sec, max two lines)
-- [ ] Dwell time and clearing rules
-- [ ] Behaviour when a new line arrives before the previous one has been read
+- [ ] Drive from the video's `currentTime`; resolve the active cue by timestamp so seeking works instantly
+- [ ] Reading-speed sanity check (~20 chars/sec, max two lines) — English renderings of dense Japanese lines can overrun their cue
+- [ ] Timing remap when translation merges or splits lines (§3.3)
+- [ ] Minimum dwell time, so a rapid exchange does not flicker
 - [ ] Optional dual display: Japanese source above the English translation
-- [ ] Behaviour when translation merges or splits lines relative to the source (§3.5)
 
 ### 5.3 Styling
 - [ ] Font, size, outline/shadow for legibility over video
-- [ ] User-configurable appearance
+- [ ] Do not collide with YouTube's own caption container
 
 ---
 
 ## Stage 6 — Cost, Fallback, and Failure
 
-- [ ] Token accounting per minute of audio; validate against the §0.4 prediction
-- [ ] Live cost-per-hour readout in the UI
-- [ ] "Cost mode" switch: Haiku 4.5 instead of Sonnet 5
+- [ ] Token accounting per video; validate against the §0.4 prediction
+- [ ] Show estimated cost **before** translating a long archive — a 4-hour VTuber VOD is not a 22-cent anime episode
+- [ ] Model selector: Haiku 4.5 / Sonnet 5 / Opus 5, with per-video cost shown
 - [ ] Local model fallback (Gemma, Qwen) behind the same interface
-- [ ] Runtime switching between hosted and local backends
 
 ### 6.1 Degradation behaviour
 
-What the user sees when things go wrong — the most visible failure surface, and currently the least specified part of the design.
-
-- [ ] ASR returns garbage or empty text → suppress the line, or show the source untranslated?
-- [ ] Claude API returns 429 → back off, and show what in the meantime?
-- [ ] Network drops mid-session → reconnect strategy, and whether to buffer or discard the gap
-- [ ] Translation queue exceeds the §0.3 hard drop → drop silently, or show a dropped-line indicator?
-- [ ] Audio present but no speech detected for a long stretch → distinguish "silence" from "broken pipeline" in the UI
-- [ ] Never leave a stale subtitle on screen when the pipeline has stalled
+- [ ] No Japanese caption track and ASR unavailable → say so plainly rather than failing silently
+- [ ] `timedtext` access breaks (§1.1) → detect and fall through to Tier 3, do not present an empty transcript as success
+- [ ] Claude API returns 429 → back off; the viewer keeps watching, so degrade to "translating…" rather than stalling playback
+- [ ] Translation falls behind the playhead → show the gap honestly
+- [ ] Network drops mid-video → resume from the last completed chunk, never restart
+- [ ] Never leave a stale subtitle on screen after a seek
 
 ---
 
 ## Stage 7 — Evaluation
 
-- [ ] Reference set: ~10 minutes of Japanese audio with human English translation
-- [ ] **Build the reference set during build step 1, not at the end** — it is the only way to tell whether a prompt change helped, and step 1 is exactly when the prompt is being written
-- [ ] End-to-end scoring (ASR errors propagate into translation)
-- [ ] Separate ASR-only and translation-only scores to isolate failures
-- [ ] Latency measured alongside quality
+- [ ] Reference set: ~10 minutes of Japanese video with human English subtitles, covering **both** profiles — one anime clip, one VTuber clip
+- [ ] Build the reference set during build step 1 — it is the only way to tell whether a prompt change helped
+- [ ] Score transcript-only and translation-only separately to isolate failures
+- [ ] Track **pronoun-resolution accuracy** as its own metric — the failure mode most visible to a viewer (§3.3)
+- [ ] Track **name and term consistency** across a whole video — the second most visible, and what §3.1 exists to fix
+- [ ] Compare tiers: does Tier 2 (auto-captions) plus a strong model beat Tier 3 (good ASR) plus the same model?
+- [ ] Compare models on the same transcript — Opus 5 costs cents per episode here, so the quality question is worth settling properly
 - [ ] Prompt version comparison harness
-- [ ] Track pronoun-resolution accuracy as its own metric — it is the failure mode most visible to a viewer (§3.5)
 
 ---
 
 ## Build Order
 
-1. **Offline, file-based** — Japanese audio file in, English `.srt` file out. No timing pressure; get the translation prompt and the Japanese-specific handling in §3.5 right here. Build the Stage 7 reference set in this step.
-2. **Live capture** — swap the file source for `chrome.tabCapture` in an offscreen document, keep everything else.
-3. **Streaming and overlay** — add progressive output and the injected rendering surface.
-4. **Optimisation** — caching, cost tuning, and (only if the measurements demand it) speculative translation.
+1. **CLI, file-based** — a Japanese `.srt` in, an English `.srt` out. No extension, no YouTube, no player. Get §3 right here: the two-pass design, the prompt, and the Japanese handling in §3.3. Build the Stage 7 reference set in this step.
+2. **Transcript acquisition** — add Tier 1/2 fetching so a YouTube URL in produces an English `.srt` out. Still a CLI. Add Tier 3 only if the coverage gap demands it.
+3. **Extension** — wrap step 2 in the extension, render the result over the player, handle seeking.
+4. **Pipelining and polish** — ahead-of-playhead scheduling, result caching, cost display, batch mode.
+
+Steps 1 and 2 are each independently useful, which is the main reason to prefer VOD first.
 
 ---
 
 ## Open Questions
 
-- [ ] How much surrounding context is enough for pronoun resolution in a pro-drop language? Expect this to need more lines than intuition suggests.
-- [ ] Is speculative translation worth the token cost at the target latency? — **provisional answer: no, for Japanese** (§4.1). Confirm by measurement.
-- [ ] Does in-browser WASM ASR + Claude beat hosted ASR + a local LLM? Both are file-based in build step 1, so this is cheap to answer early — and the answer determines the whole cost structure. Pull it forward.
-- [ ] **VOD and live are arguably two different products — is the first release both, or one?** For an archived video with a Japanese caption track, there is no ASR stage, no latency budget, and no streaming: read the transcript, translate it with full document context, render on the existing timings. That path is dramatically cheaper, more accurate, and simpler than the live pipeline, and it covers most anime plus VTuber stream archives. The live pipeline is only strictly required for watching a stream as it happens. **Recommendation: ship VOD first** — it is nearly build step 1 with a renderer bolted on, and it gets something usable in front of the user before the hard real-time work starts.
-- [ ] Can the `<video>` element be captured directly on YouTube (§1.1 path b), or is `tabCapture` required?
+- [ ] How reliable is third-party caption access in practice (§1.1)? This gates the whole design — if `timedtext` is not dependable, Tier 3 ASR becomes the primary path rather than the fallback, and the cost model changes. **Answer this first; it is cheap to test.**
+- [ ] What fraction of target videos actually have a usable Japanese track? Sample real anime and VTuber archives before assuming Tier 1 coverage.
+- [ ] Does Tier 2 plus punctuation restoration beat Tier 3 ASR? Determines whether ASR is needed at all.
+- [ ] Progressive or blocking translation (§0.3)? Decides whether the Batch API is usable.
+- [ ] Local-only result cache, or a shared backend (§4.2)?
+- [ ] How much forward context is enough for pronoun resolution now that it is available (§3.2)?
+
+---
+
+## Appendix A — Deferred: Live Stream Pipeline
+
+Preserved from the real-time design. Nothing here is in scope now; it is kept so the analysis is not lost if live streams come back.
+
+**The shape.** Capture tab audio (`chrome.tabCapture` from an offscreen document, or `captureStream()` on the `<video>` element — unverified on YouTube's MSE player) → VAD endpointing → streaming ASR → translate → render.
+
+**Latency budget that applied.** p50 ≤ 1.5 s, p95 ≤ 2.5 s, drop above 4 s, measured from end of utterance to painted subtitle. VAD endpointing (300–600 ms) dominates. Anchors: professional live captioning runs 3–5 s behind and simultaneous interpreters 2–4 s, so 1.5 s is already ahead of a human and sub-second buys nothing perceptible.
+
+**Cost that applied.** Line-by-line requests, ~720 utterances/hour for anime and ~1,200 for VTuber streams: $0.40–0.67/hr on Haiku 4.5, $0.80–1.33 on Sonnet 5, $2.00–3.33 on Opus 5, plus $0.15–0.50/hr for hosted streaming ASR. Roughly 4× the VOD cost for the same content, because no request can share context with its neighbours.
+
+**Findings worth keeping:**
+
+- **Speculative translation does not work for Japanese.** It assumes a growing transcript prefix has stable meaning, but Japanese is verb-final: 食べます / 食べません / 食べたくなかった diverge only at the end, so a translated prefix is about as likely to be inverted as correct. If revisited, speculate on *clause completion*, not token-prefix stability.
+- **Pro-drop is much harder live.** Without forward context the model can only guess from preceding lines — §3.2 is the VOD design's biggest single advantage.
+- **Segmentation ownership must be decided once.** VAD splitting on silence and batching re-merging fragments are the same decision at two layers. An explicit segmenter stage between ASR and translation is probably right for Japanese, since acoustic silence and clause boundaries diverge often.
+- **Japanese pause behaviour** (fillers, `〜ね`, `えっと`) trips aggressive endpointers and over-fragments clauses; start around 500 ms of trailing silence.
+- **MV3 service workers die after ~30 s idle**, so a persistent capture session needs an offscreen document.
+- **`tabCapture` mutes the tab** unless the stream is re-piped to an `AudioContext` destination.
+- **Ads must pause capture**, or ad reads get transcribed and translated onto the screen.
