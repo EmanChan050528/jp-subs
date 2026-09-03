@@ -120,8 +120,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg?.type === "run:clear") {
-    runs.delete(msg.tabId);
-    send(msg.tabId, { type: "overlay:clear" });
+    // The content script cannot know its own tab id, so fall back to the
+    // sender. Deleting runs.get(undefined) silently did nothing, which left a
+    // finished run's state alive across a navigation to a different video.
+    const tabId = msg.tabId ?? sender.tab?.id;
+    runs.delete(tabId);
+    if (tabId !== undefined) send(tabId, { type: "overlay:clear" });
     sendResponse({ ok: true });
     return false;
   }

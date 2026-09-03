@@ -44,6 +44,17 @@ Click the toolbar icon. The popup reports what it found, then:
 
 Model and host are configurable under **Settings** in the popup.
 
+Once a video is translated the primary button reads **Subtitles applied** and
+is disabled — a second run on the same video buys nothing and costs minutes of
+local inference. **Re-translate** appears alongside it as the escape hatch. The
+state is per-video, so navigating to a different video re-arms the button.
+
+**You can tab away while it runs.** The pipeline lives in the service worker,
+which is not tied to tab visibility or focus. Do not close the YouTube tab or
+navigate it to a different video mid-run — extraction and delivery both target
+that tab. Closing the popup is fine; progress is held in the worker and the
+popup picks it back up when reopened.
+
 Output shape:
 
 ```json

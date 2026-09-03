@@ -2,11 +2,27 @@
 
 const $ = (id) => document.getElementById(id);
 const goButton = $("go");
+const againButton = $("again");
 const saveButton = $("save");
 const bar = $("bar");
 
 let tabId = null;
 let poll = null;
+let currentVideoId = null;
+const GO_LABEL = "Translate & show subtitles";
+
+/**
+ * A finished run only counts for the video it ran on. This is keyed on the
+ * current videoId because the run state lives in the worker and outlives a
+ * navigation — without the check the button would stay disabled after moving
+ * to a different video.
+ */
+function isDoneForThisVideo(state) {
+  return !!state
+    && state.phase === "done"
+    && !!currentVideoId
+    && state.videoId === currentVideoId;
+}
 
 function show(text, kind) {
   const el = $("msg");
@@ -95,8 +111,20 @@ async function refreshRunState() {
   stopPolling();
   setProgress(0, 0);
   bar.removeAttribute("value");
-  goButton.disabled = false;
   saveButton.disabled = false;
+
+  if (isDoneForThisVideo(state)) {
+    // Nothing is gained by running it again on the same video, and a second
+    // run would burn several minutes of local inference. Offer it explicitly
+    // rather than leaving the primary button armed.
+    goButton.disabled = true;
+    goButton.textContent = "Subtitles applied";
+    againButton.hidden = false;
+  } else {
+    goButton.disabled = false;
+    goButton.textContent = GO_LABEL;
+    againButton.hidden = true;
+  }
 
   if (state.phase === "error") show(state.error, "err");
   else if (state.phase === "done") {
@@ -135,6 +163,7 @@ async function init() {
     return;
   }
 
+  currentVideoId = d.videoId || null;
   $("title").textContent = d.title || d.videoId || "";
 
   const rows = [
@@ -157,8 +186,9 @@ async function init() {
   await refreshRunState();
 }
 
-goButton.addEventListener("click", async () => {
+async function startRun() {
   goButton.disabled = true;
+  againButton.hidden = true;
   saveButton.disabled = true;
   show("Starting…", "ok");
   bar.removeAttribute("value"); // indeterminate
@@ -172,8 +202,16 @@ goButton.addEventListener("click", async () => {
     stopPolling();
     show(res.error, "err");
     goButton.disabled = false;
+    goButton.textContent = GO_LABEL;
     saveButton.disabled = false;
   }
+}
+
+goButton.addEventListener("click", startRun);
+
+againButton.addEventListener("click", async () => {
+  await chrome.runtime.sendMessage({ type: "run:clear", tabId });
+  await startRun();
 });
 
 saveButton.addEventListener("click", async () => {

@@ -96,7 +96,7 @@
   // subtitles must not survive the navigation.
   window.addEventListener("yt-navigate-finish", () => {
     overlay.clear();
-    chrome.runtime.sendMessage({ type: "run:clear", tabId: undefined }).catch(() => {});
+    chrome.runtime.sendMessage({ type: "run:clear" }).catch(() => {});
   });
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
