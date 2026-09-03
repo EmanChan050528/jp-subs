@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      width: 320px;
+      margin: 0;
+      padding: 14px;
+      font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    h1 { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
+    .sub { margin: 0 0 12px; opacity: 0.6; font-size: 11px; }
+    #title {
+      margin-bottom: 10px;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0 0 12px; }
+    dt { opacity: 0.6; }
+    dd { margin: 0; }
+    button {
+      width: 100%;
+      padding: 8px;
+      font: inherit;
+      font-weight: 600;
+      border: 1px solid rgba(128, 128, 128, 0.45);
+      border-radius: 6px;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+    }
+    button:hover:not(:disabled) { background: rgba(128, 128, 128, 0.14); }
+    button:disabled { opacity: 0.45; cursor: default; }
+    #msg {
+      margin-top: 10px;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      white-space: pre-wrap;
+      display: none;
+    }
+    #msg.show { display: block; }
+    #msg.err { background: rgba(220, 60, 60, 0.14); }
+    #msg.ok { background: rgba(60, 170, 90, 0.16); }
+    .warn { color: #c26a00; }
+  </style>
+</head>
+<body>
+  <h1>JP Subs — transcript extractor</h1>
+  <p class="sub">Build step 1. Extraction only: no translation, no subtitles yet.</p>
+
+  <div id="title"></div>
+  <dl id="facts"></dl>
+
+  <button id="go" disabled>Extract Japanese transcript</button>
+  <div id="msg"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
