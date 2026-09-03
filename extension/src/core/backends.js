@@ -156,7 +156,11 @@ export function parseJson(text, what = "response") {
     } catch { /* try the next shape */ }
   }
 
+  // Show the TAIL, not the head. These failures are nearly always a reply that
+  // ran out of output budget, and the head looks perfectly healthy — it is the
+  // end that reveals the cut.
   throw new Error(
-    `Could not parse JSON from the ${what}. First 300 characters:\n${text.slice(0, 300)}`
+    `Could not parse JSON from the ${what} (${text.length} chars). ` +
+    `Last 200 characters:\n…${text.slice(-200)}`
   );
 }

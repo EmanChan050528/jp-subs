@@ -77,18 +77,19 @@ video (merging), 202 cues → 235 units on the sentence-dense one (splitting).
 - [x] SRT output with wrapping and minimum dwell
 - [x] Ollama backend
 - [x] Pipeline verified end to end (78/78 units, 38 s, on `gemma3:4b`)
-- [ ] **Quality run on Qwen** — the actual question. **Blocked:** the installed
-      Ollama is 0.12.5, which is too old for Qwen3.5; `ollama pull qwen3.5:9b`
-      refuses with "download the latest version" *and exits 0*, so it fails
-      silently. Either update Ollama, or use `qwen3:14b` (9.3 GB, fits 12 GB
-      VRAM) which the current version supports.
-- [ ] Score against `../eval/fixtures/*.youtube-en.json`
-- [ ] Gemini backend, if Qwen is not good enough
+- [x] **Quality run on `qwen3.5:9b`** — beats the YouTube baseline on 5 of 7
+      failure categories, 78/78 units in ~24 s. Scored in `../eval/README.md`.
+- [x] Retry for lines the model omits from its JSON
+- [x] Pass 1 failure degrades instead of aborting the run
+- [x] Pass 1 input sampled for long videos (a 4-hour archive is ~75,000 chars
+      and will not fit any local context)
+- [ ] Gemini backend, if the remaining gaps justify it — still unverified
 
-## What the smoke test showed
+## What the first smoke test showed
 
-Run on `gemma3:4b` (a stand-in — too small for this job, but it exercised every
-code path). Against the seven failure categories in `../eval/README.md`:
+Kept for the record. Run on `gemma3:4b` (a stand-in — too small for this job,
+but it exercised every code path); the Qwen3.5 results that superseded it are
+in `../eval/README.md`. Against the seven failure categories in `../eval/README.md`:
 
 **Fixed by segmentation alone** — the polarity inversion. Merging the negation
 into the same unit as its verb removes the failure before the model sees it.

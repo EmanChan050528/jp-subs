@@ -5,10 +5,41 @@ import { chunk } from "./chunk.js";
 import { analysisPrompt, translationPrompt } from "./prompt.js";
 import { parseJson } from "./backends.js";
 
+/**
+ * How much Japanese to show pass 1. The whole transcript is ideal, but a
+ * four-hour archive is ~75,000 characters and will not fit any local model's
+ * context — and an over-long prompt fails as a truncated, unparseable reply
+ * rather than as a clear error.
+ */
+const MAX_ANALYSIS_CHARS = 6000;
+
+/**
+ * Evenly sample units across the whole video rather than taking a prefix, so
+ * the glossary still sees names and vocabulary from the end.
+ */
+function analysisText(units, budget = MAX_ANALYSIS_CHARS) {
+  const all = units.map((u) => u.ja);
+  const total = all.reduce((n, s) => n + s.length + 1, 0);
+  if (total <= budget) return { text: all.join("\n"), sampled: false };
+
+  const step = total / budget;
+  const kept = [];
+  let used = 0;
+  for (let i = 0; i < all.length; i += Math.max(1, Math.round(step))) {
+    if (used + all[i].length > budget) break;
+    kept.push(all[i]);
+    used += all[i].length + 1;
+  }
+  return { text: kept.join("\n"), sampled: true, keptUnits: kept.length };
+}
+
 /** Pass 1: whole-transcript glossary and speaker model. */
 export async function analyse(units, backend, meta = {}, log = () => {}) {
-  const text = units.map((u) => u.ja).join("\n");
-  log(`pass 1: analysing ${units.length} units (${text.length} chars)`);
+  const { text, sampled, keptUnits } = analysisText(units);
+  log(
+    `pass 1: analysing ${units.length} units (${text.length} chars` +
+    (sampled ? `, sampled down to ${keptUnits} units` : "") + ")"
+  );
 
   const count = (o) => (o && typeof o === "object" ? Object.keys(o).length : 0);
   const useful = (g) =>
@@ -16,20 +47,30 @@ export async function analyse(units, backend, meta = {}, log = () => {}) {
             count(g.names) + count(g.terms) + count(g.asr_corrections) > 0);
 
   let glossary = null;
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    glossary = parseJson(await backend(analysisPrompt(text, meta), { json: true }), "analysis pass");
-    if (useful(glossary)) break;
-    if (attempt === 1) log("pass 1: came back empty, retrying once");
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      glossary = parseJson(
+        await backend(analysisPrompt(text, meta), { json: true }),
+        "analysis pass"
+      );
+      if (useful(glossary)) break;
+      log(`pass 1: attempt ${attempt} came back empty`);
+    } catch (err) {
+      // A malformed or truncated reply must NOT end the run. Losing the
+      // glossary costs quality; throwing here costs every subtitle.
+      log(`pass 1: attempt ${attempt} failed — ${err.message.split("\n")[0]}`);
+      glossary = null;
+    }
   }
 
   // Pass 1 is the entire quality advantage over per-cue translation. If it is
   // empty the run will still "succeed" and quietly produce worse subtitles, so
   // say so rather than letting it pass.
   if (!useful(glossary)) {
-    log("pass 1: WARNING — glossary is empty. Names, domain terms and ASR");
-    log("        corrections will NOT be applied. Output is roughly");
-    log("        per-chunk translation. Try a larger model.");
-    glossary = glossary || {};
+    log("pass 1: WARNING — no glossary. Names, domain terms and ASR");
+    log("        corrections will NOT be applied. Translating anyway;");
+    log("        expect roughly per-chunk quality.");
+    glossary = {};
   } else {
     log(
       `pass 1: ${count(glossary.names)} names, ${count(glossary.terms)} terms, ` +
