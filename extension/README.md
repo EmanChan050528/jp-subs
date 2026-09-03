@@ -126,7 +126,30 @@ Test against these, in order:
 
 ## Known gaps (step 3)
 
-- [ ] **Nothing in step 3 has been run in a browser.** Every file syntax-checks
+- [ ] **Subtitles did not appear on the first real run.** The pipeline finished
+      (315 units) and the overlay mounted, but no cue text ever rendered. Four
+      defects were found and fixed afterwards (below); which one caused it is
+      not yet confirmed, and `[jpsub]` console lines were added so the next run
+      says so directly.
+
+### Fixed after the first run
+
+- **The clock was `requestAnimationFrame`.** Measured firing *zero* times per
+  second on a visible-but-unpainted YouTube tab, which stops subtitles dead.
+  Replaced with a 100 ms timer plus `timeupdate`/`seeked`, driven by playback
+  rather than painting, and `start()` now renders immediately instead of
+  waiting a tick.
+- **Subtitles lingered through gaps.** `render()` short-circuited on
+  `i === lastIndex`, so within one unit's index the expiry was never
+  re-evaluated and a line stayed on screen until the next unit began. Now
+  compares the resulting text instead of the index.
+- **Units were dropped if the player was not ready.** `withOverlay` returned
+  false and discarded the payload; it now holds it and retries until the player
+  exists.
+- **Delivery failures were swallowed.** `send()` caught and ignored every
+  error, so the worker could report success while nothing reached the page.
+
+- [ ] **Nothing else in step 3 has been run in a browser.** Every file syntax-checks
       and the shared core is exercised by the CLI, but the worker, the overlay,
       the progress plumbing and the popup have not been loaded. Step 1 worked
       first try; do not assume this will.

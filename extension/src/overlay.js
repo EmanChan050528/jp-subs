@@ -18,7 +18,7 @@ class Overlay {
     this.box = null;
     this.video = null;
     this.player = null;
-    this.raf = null;
+    this.timer = null;
     this.lastIndex = -1;
     this.status = "";
   }
@@ -94,6 +94,7 @@ class Overlay {
       .sort((a, b) => a.t_ms - b.t_ms);
     this.lastIndex = -1;
     this.setStatus("");
+    console.debug(`[jpsub] overlay received ${this.units.length} units`);
     this.start();
   }
 
@@ -124,36 +125,50 @@ class Overlay {
     return found;
   }
 
-  tick = () => {
-    this.raf = requestAnimationFrame(this.tick);
+  render = () => {
     if (!this.box || !this.video || !this.units.length) return;
 
     // Ads play in the same <video> element; showing a cue then would put the
     // wrong text on unrelated footage.
     if (this.player?.classList?.contains("ad-showing")) {
-      if (this.lastIndex !== -1) { this.box.textContent = ""; this.lastIndex = -1; }
+      if (this.box.textContent) this.box.textContent = "";
       return;
     }
 
     const ms = this.video.currentTime * 1000;
     const i = this.indexAt(ms);
-
-    if (i === this.lastIndex) return;
-    this.lastIndex = i;
-
     const unit = i >= 0 ? this.units[i] : null;
+
     // Past its end with nothing following yet: show nothing rather than
     // leaving a stale line on screen (§6.1).
-    this.box.textContent = unit && ms <= unit.end_ms + 400 ? unit.en : "";
+    //
+    // Compare the resulting TEXT, not the unit index. Indexing off the index
+    // alone was a bug: within one unit's index the expiry never got
+    // re-evaluated, so a line stayed on screen through the entire gap until
+    // the next unit began.
+    const text = unit && ms <= unit.end_ms + 400 ? unit.en : "";
+    if (text !== this.box.textContent) this.box.textContent = text;
   };
 
+  /**
+   * Deliberately NOT requestAnimationFrame. rAF is tied to painting, and was
+   * measured firing zero times per second on a visible but unpainted YouTube
+   * tab — subtitles would simply stop. A timer plus the media events is driven
+   * by playback instead, and 10 Hz is far finer than subtitles need.
+   */
   start() {
-    if (!this.raf) this.raf = requestAnimationFrame(this.tick);
+    if (this.timer) return;
+    this.timer = setInterval(this.render, 100);
+    this.video?.addEventListener("timeupdate", this.render);
+    this.video?.addEventListener("seeked", this.render);
+    this.render(); // show the current line immediately, don't wait for a tick
   }
 
   stop() {
-    if (this.raf) cancelAnimationFrame(this.raf);
-    this.raf = null;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.video?.removeEventListener("timeupdate", this.render);
+    this.video?.removeEventListener("seeked", this.render);
   }
 
   destroy() {

@@ -69,10 +69,27 @@
 
   const overlay = new globalThis.JPSubOverlay();
 
+  // If the player is not ready the payload must be held, not dropped. Losing
+  // it means the run "succeeds" with no subtitles and nothing to point at.
+  let heldUpdate = null;
+  let mountRetry = null;
+
   function withOverlay(fn) {
-    if (!overlay.mount()) return false;
-    fn();
-    return true;
+    if (overlay.mount()) { fn(); return true; }
+    console.debug("[jpsub] player not ready; holding overlay update");
+    heldUpdate = fn;
+    if (!mountRetry) {
+      mountRetry = setInterval(() => {
+        if (!heldUpdate || overlay.mount()) {
+          clearInterval(mountRetry);
+          mountRetry = null;
+          const held = heldUpdate;
+          heldUpdate = null;
+          if (held) held();
+        }
+      }, 500);
+    }
+    return false;
   }
 
   // YouTube is an SPA: a new video reuses the document, so the old video's
@@ -84,6 +101,7 @@
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type === "overlay:units") {
+      console.debug(`[jpsub] overlay:units received (${msg.units?.length ?? 0})`);
       withOverlay(() => {
         overlay.setUnits(msg.units);
         overlay.setStatus(msg.status || "");

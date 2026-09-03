@@ -38,7 +38,12 @@ async function settings() {
 }
 
 function send(tabId, message) {
-  return chrome.tabs.sendMessage(tabId, message).catch(() => {});
+  // Swallowing these hid a whole class of failure: the pipeline reports
+  // success while nothing ever reaches the page.
+  return chrome.tabs.sendMessage(tabId, message).catch((err) => {
+    console.warn(`[jpsub] could not deliver ${message.type} to tab ${tabId}:`, err?.message || err);
+    setState(tabId, { deliveryError: `${message.type}: ${err?.message || err}` });
+  });
 }
 
 /** Shape the pipeline's parallel arrays into what the overlay consumes. */
@@ -78,6 +83,7 @@ async function translateTab(tabId) {
     (partial, done, total) => {
       setState(tabId, { done, total });
       // Push partial results so subtitles appear before the whole video is done.
+      console.debug(`[jpsub] sending ${done}/${total}`);
       send(tabId, {
         type: "overlay:units",
         units: toOverlayUnits(units, partial),
