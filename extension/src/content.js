@@ -69,6 +69,22 @@
 
   const overlay = new globalThis.JPSubOverlay();
 
+  /** Which video this page is currently showing. */
+  const currentVideoId = () => new URLSearchParams(location.search).get("v");
+
+  /**
+   * A run started on one video must never paint onto another. The worker
+   * stamps its messages, and anything that does not match what the page is
+   * showing right now is dropped.
+   */
+  function forThisVideo(msg) {
+    if (!msg.videoId) return true;            // unstamped: legacy, allow
+    const now = currentVideoId();
+    if (!now || msg.videoId === now) return true;
+    console.debug(`[jpsub] dropped ${msg.type} for ${msg.videoId}; page is on ${now}`);
+    return false;
+  }
+
   // If the player is not ready the payload must be held, not dropped. Losing
   // it means the run "succeeds" with no subtitles and nothing to point at.
   let heldUpdate = null;
@@ -101,6 +117,7 @@
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type === "overlay:units") {
+      if (!forThisVideo(msg)) { sendResponse({ ok: true, dropped: true }); return false; }
       console.debug(`[jpsub] overlay:units received (${msg.units?.length ?? 0})`);
       withOverlay(() => {
         overlay.setUnits(msg.units);
@@ -111,6 +128,7 @@
     }
 
     if (msg?.type === "overlay:status") {
+      if (!forThisVideo(msg)) { sendResponse({ ok: true, dropped: true }); return false; }
       withOverlay(() => overlay.setStatus(msg.text));
       sendResponse({ ok: true });
       return false;

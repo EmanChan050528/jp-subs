@@ -154,6 +154,9 @@ function toOverlayUnits(units, translations) {
     .filter((u) => u.en);
 }
 
+/** Tabs whose in-flight run has been abandoned (the viewer navigated away). */
+const cancelled = new Set();
+
 async function translateTab(tabId, { force = false } = {}) {
   const config = await settings();
   const backend = makeBackend(config.backend, {
@@ -170,7 +173,7 @@ async function translateTab(tabId, { force = false } = {}) {
     const videoId = info?.ok ? info.data.videoId : null;
     const hit = await cacheGet(videoId);
     if (hit) {
-      await send(tabId, { type: "overlay:units", units: hit.units, status: "" });
+      await send(tabId, { type: "overlay:units", videoId, units: hit.units, status: "" });
       setState(tabId, {
         running: false, phase: "done", failures: [], eta: null,
         videoId, units: hit.units.length, fromCache: true, cachedModel: hit.model,
@@ -185,6 +188,8 @@ async function translateTab(tabId, { force = false } = {}) {
   if (!extracted?.ok) throw new Error(extracted?.error || "Could not extract the transcript.");
 
   const transcript = extracted.data;
+  const runVideoId = transcript.video_id;
+  cancelled.delete(tabId);
   const units = segment(transcript.cues);
   setState(tabId, { phase: "analysing", videoId: transcript.video_id, units: units.length });
   await send(tabId, {
@@ -198,8 +203,10 @@ async function translateTab(tabId, { force = false } = {}) {
   setState(tabId, { phase: "translating" });
   const startedAt = Date.now();
 
-  const { failures, translations: translationsOut } = await translateUnits(
-    units, glossary, backend, config, log,
+  const { failures, translations: translationsOut, stopped } = await translateUnits(
+    units, glossary, backend,
+    { ...config, shouldStop: () => cancelled.has(tabId) },
+    log,
     (partial, done, total) => {
       // Chunks vary in length, so estimate from the mean so far rather than
       // the last one. Long videos are exactly where an ETA earns its place.
@@ -211,8 +218,11 @@ async function translateTab(tabId, { force = false } = {}) {
       console.debug(`[jpsub] sending ${done}/${total}${eta ? `, ~${eta} left` : ""}`);
 
       // Push partial results so subtitles appear before the whole video is done.
+      // Stamped with the video id so a stale run cannot paint its subtitles
+      // onto whatever the tab moved on to.
       send(tabId, {
         type: "overlay:units",
+        videoId: runVideoId,
         units: toOverlayUnits(units, partial),
         status: done < total
           ? `Translating ${done}/${total}${eta ? ` · ~${eta} left` : ""}`
@@ -220,6 +230,14 @@ async function translateTab(tabId, { force = false } = {}) {
       });
     }
   );
+
+  if (stopped) {
+    // Do not cache a partial translation — it would look complete on the next
+    // visit and there would be no way to tell.
+    setState(tabId, { running: false, phase: "cancelled", eta: null });
+    cancelled.delete(tabId);
+    return { units: units.length, failures, stopped: true };
+  }
 
   const overlayUnits = toOverlayUnits(units, translationsOut);
   await cachePut(transcript.video_id, {
@@ -234,7 +252,7 @@ async function translateTab(tabId, { force = false } = {}) {
     running: false, phase: "done", failures, eta: null,
     fromCache: false, tookMs: Date.now() - startedAt,
   });
-  await send(tabId, { type: "overlay:status", text: "" });
+  await send(tabId, { type: "overlay:status", videoId: runVideoId, text: "" });
   return { units: units.length, failures };
 }
 
@@ -290,6 +308,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // sender. Deleting runs.get(undefined) silently did nothing, which left a
     // finished run's state alive across a navigation to a different video.
     const tabId = msg.tabId ?? sender.tab?.id;
+    // Abandon any run for this tab. Without this the old video's run kept
+    // going, kept the tab marked busy so the new video could not be
+    // translated, and kept pushing its subtitles onto the new video.
+    if (tabId !== undefined) cancelled.add(tabId);
     runs.delete(tabId);
     if (tabId !== undefined) send(tabId, { type: "overlay:clear" });
     sendResponse({ ok: true });

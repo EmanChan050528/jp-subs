@@ -71,10 +71,14 @@ shows current usage and a **Clear cache** button.
 Rough capacity: ~14 four-hour VODs, or a couple of hundred anime episodes.
 
 **You can tab away while it runs.** The pipeline lives in the service worker,
-which is not tied to tab visibility or focus. Do not close the YouTube tab or
-navigate it to a different video mid-run — extraction and delivery both target
-that tab. Closing the popup is fine; progress is held in the worker and the
-popup picks it back up when reopened.
+which is not tied to tab visibility or focus. Closing the popup is fine;
+progress is held in the worker and the popup picks it back up when reopened.
+
+**Navigating that tab to a different video cancels the run.** It stops at the
+next chunk boundary, nothing partial is cached, and the tab is freed so the new
+video can be translated straight away. Overlay messages are stamped with the
+video they belong to and dropped if the page has moved on, so a run in flight
+can never paint its subtitles onto a different video.
 
 Output shape:
 

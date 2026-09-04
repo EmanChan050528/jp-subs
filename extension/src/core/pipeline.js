@@ -110,6 +110,13 @@ export async function translateUnits(
       .filter((line) => !translations[line.n - 1]);
 
   for (const c of chunks) {
+    // Checked between chunks rather than mid-request: a caller that has lost
+    // interest (the viewer navigated away) should not keep occupying the GPU.
+    if (options.shouldStop && options.shouldStop()) {
+      log(`stopped after ${c.index} of ${chunks.length} chunks`);
+      return { translations, failures, stopped: true };
+    }
+
     const label = `chunk ${c.index + 1}/${chunks.length}`;
     const total = c.target.length;
 
