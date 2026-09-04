@@ -147,21 +147,45 @@
       vss_id: track.vssId || "",
     };
 
-    p.loadModule("captions");
-    await sleep(800);
-    p.setOption("captions", "track", option);
+    // Turning captions on is a side effect of minting the token, not something
+    // the viewer asked for. Remember what was showing so it can be put back —
+    // otherwise YouTube's own subtitles are left on top of ours.
+    let previous = null;
+    try { previous = p.getOption("captions", "track"); } catch { /* ignore */ }
 
-    // Poll rather than sleeping a fixed time — the request lands whenever the
-    // player gets round to it.
-    for (let i = 0; i < 20 && !tokenUrl(); i++) await sleep(250);
-
-    // The player will not refetch a track it already holds. Toggling forces a
-    // fresh, token-bearing request.
-    if (!tokenUrl()) {
-      p.setOption("captions", "track", {});
-      await sleep(500);
+    try {
+      p.loadModule("captions");
+      await sleep(800);
       p.setOption("captions", "track", option);
-      for (let i = 0; i < 24 && !tokenUrl(); i++) await sleep(250);
+
+      // Poll rather than sleeping a fixed time — the request lands whenever the
+      // player gets round to it.
+      for (let i = 0; i < 20 && !tokenUrl(); i++) await sleep(250);
+
+      // The player will not refetch a track it already holds. Toggling forces a
+      // fresh, token-bearing request.
+      if (!tokenUrl()) {
+        p.setOption("captions", "track", {});
+        await sleep(500);
+        p.setOption("captions", "track", option);
+        for (let i = 0; i < 24 && !tokenUrl(); i++) await sleep(250);
+      }
+    } finally {
+      restoreCaptions(p, previous);
+    }
+  }
+
+  /**
+   * Put YouTube's caption selection back the way the viewer had it. An empty
+   * object turns captions off, which is the right answer when they were off to
+   * begin with — the common case, since our own subtitles replace them.
+   */
+  function restoreCaptions(p, previous) {
+    try {
+      const hadCaptions = !!previous && !!previous.languageCode;
+      p.setOption("captions", "track", hadCaptions ? previous : {});
+    } catch (err) {
+      console.debug("[jpsub] could not restore captions:", err?.message || err);
     }
   }
 
