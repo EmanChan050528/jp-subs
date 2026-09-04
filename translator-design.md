@@ -232,7 +232,7 @@ What was kept from the idea:
 - [x] **Local browser storage only.** A shared backend would make repeat views free across users, but turns a personal tool into a service with hosting and raises questions about redistributing translations of third-party content. Out of scope by choice.
 - [x] **Bounded, not permanent.** `chrome.storage.local` caps at 10 MB and a 4-hour VOD is ~417 KB of units, so an unbounded cache would start failing writes after about twenty. 7 MB budget, LRU eviction, usage shown in the popup.
 - [x] **Versioned.** Entries record the pipeline version that made them; a segmentation or timing change discards stale ones. Without this a fix could never reach a video already watched, because the cache stores the timings it was made with.
-- [ ] Export to `.srt` from the extension — the CLI does it, the extension does not
+- [x] Export to `.srt` from the extension, so a translation is not trapped in the browser
 
 ---
 

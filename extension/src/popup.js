@@ -5,6 +5,7 @@ const goButton = $("go");
 const againButton = $("again");
 const stopButton = $("stop");
 const saveButton = $("save");
+const srtButton = $("srt");
 const bar = $("bar");
 
 let tabId = null;
@@ -245,6 +246,10 @@ async function refreshRunState() {
   saveButton.disabled = false;
   stopButton.hidden = true;
 
+  // Offered whenever a translation exists for this video, however it got here
+  // — a fresh run or a cache hit.
+  srtButton.hidden = !isDoneForThisVideo(state);
+
   if (isDoneForThisVideo(state)) {
     // Nothing is gained by running it again on the same video, and a second
     // run would burn several minutes of local inference. Offer it explicitly
@@ -332,6 +337,31 @@ async function init() {
   await refreshRunState();
 }
 
+srtButton.addEventListener("click", async () => {
+  srtButton.disabled = true;
+  const built = await chrome.runtime.sendMessage({ type: "srt:get", videoId: currentVideoId });
+  if (!built?.ok) {
+    show(built?.error || "Could not build the .srt.", "err");
+    srtButton.disabled = false;
+    return;
+  }
+  const saved = await chrome.tabs.sendMessage(tabId, {
+    type: "download:srt",
+    srt: built.data.srt,
+    title: built.data.title,
+    videoId: built.data.videoId,
+  }).catch((e) => ({ ok: false, error: e?.message }));
+
+  show(
+    saved?.ok
+      ? `Saved ${saved.data.filename}
+${built.data.lines} lines`
+      : saved?.error || "Could not save the file.",
+    saved?.ok ? "ok" : "err"
+  );
+  srtButton.disabled = false;
+});
+
 stopButton.addEventListener("click", async () => {
   stopButton.disabled = true;
   stopButton.textContent = "Stopping…";
@@ -340,6 +370,7 @@ stopButton.addEventListener("click", async () => {
 });
 
 async function startRun({ force = false } = {}) {
+  srtButton.hidden = true;
   goButton.disabled = true;
   againButton.hidden = true;
   stopButton.hidden = false;

@@ -49,11 +49,9 @@
     return s.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "_").slice(0, 60) || fallback;
   }
 
-  function save(transcript) {
-    const name = `${transcript.video_id}_${slug(transcript.title, "transcript")}.ja.json`;
-    const blob = new Blob([JSON.stringify(transcript, null, 2)], {
-      type: "application/json",
-    });
+  /** Trigger a download of arbitrary text. */
+  function download(name, text, type) {
+    const blob = new Blob([text], { type });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -63,6 +61,14 @@
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
     return name;
+  }
+
+  function save(transcript) {
+    return download(
+      `${transcript.video_id}_${slug(transcript.title, "transcript")}.ja.json`,
+      JSON.stringify(transcript, null, 2),
+      "application/json"
+    );
   }
 
   // ------------------------------------------------------------- overlay
@@ -137,6 +143,17 @@
     if (msg?.type === "overlay:clear") {
       overlay.clear();
       sendResponse({ ok: true });
+      return false;
+    }
+
+    if (msg?.type === "download:srt") {
+      try {
+        const name = `${msg.videoId}_${slug(msg.title, "subtitles")}.en.srt`;
+        download(name, msg.srt, "text/plain;charset=utf-8");
+        sendResponse({ ok: true, data: { filename: name } });
+      } catch (err) {
+        sendResponse({ ok: false, error: err?.message || String(err) });
+      }
       return false;
     }
 

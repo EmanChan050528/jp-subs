@@ -12,6 +12,7 @@
 import { segment } from "./core/segment.js";
 import { analyse, translateUnits } from "./core/pipeline.js";
 import { makeBackend } from "./core/backends.js";
+import { toSrt } from "./core/srt.js";
 
 const DEFAULTS = {
   backend: "ollama",
@@ -358,6 +359,30 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await send(tabId, { type: "overlay:status", text: `Failed: ${err.message}` });
         sendResponse({ ok: false, error: err.message });
       });
+    return true; // async
+  }
+
+  if (msg?.type === "srt:get") {
+    // Built here rather than in the content script: srt.js is an ES module and
+    // content scripts cannot import one.
+    cacheGet(msg.videoId)
+      .then((entry) => {
+        if (!entry) {
+          sendResponse({ ok: false, error: "Nothing cached for this video. Translate it first." });
+          return;
+        }
+        const units = entry.units.map((u) => ({ start_ms: u.t_ms, end_ms: u.end_ms }));
+        sendResponse({
+          ok: true,
+          data: {
+            srt: toSrt(units, entry.units.map((u) => u.en)),
+            title: entry.title,
+            videoId: entry.video_id,
+            lines: entry.units.length,
+          },
+        });
+      })
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true; // async
   }
 

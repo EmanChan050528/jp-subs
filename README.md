@@ -168,6 +168,10 @@ seconds; whatever was already translated stays on screen.
 **Re-translate** — ignores the cached result and translates the video again.
 Use it after editing the glossary or switching models.
 
+**Download .srt** — saves the English subtitles as a standard `.srt` file, so
+they can be used in VLC, mpv, or anywhere else. Appears once a video has been
+translated, and works from the cache too.
+
 **Save transcript only** — downloads the raw Japanese transcript as JSON
 without calling the model at all.
 

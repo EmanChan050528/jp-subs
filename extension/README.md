@@ -41,6 +41,9 @@ Click the toolbar icon. The popup reports what it found, then:
   end, and progress is shown both in the popup and on the video.
 - **Save transcript only** — the build step 1 behaviour: writes the Japanese
   `.json` to your downloads and does not call a model.
+- **Download .srt** — appears once a video has a translation, from a fresh run
+  or from cache. Built in the worker rather than the content script, because
+  `srt.js` is an ES module and content scripts cannot import one.
 
 **Settings** lets you pick any model Ollama already has installed (the list is
 fetched live) and change the host.
