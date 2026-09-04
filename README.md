@@ -200,7 +200,14 @@ before or after. Measured against it on a real VTuber archive:
 
 The first row is the one that matters: YouTube states the **opposite** of what
 was said, because the negation falls in the next caption line and it never sees
-it. Full scoring, including the cases this project still gets wrong, is in
+it.
+
+**A caveat on these comparisons.** They were scored in-house, against a list of
+failure categories written by the same party that produced one of the outputs.
+No independent Japanese speaker has checked them. The examples above are real
+and reproducible from the files in [`eval/`](eval/), but treat "beats YouTube on
+5 of 7 categories" as an internal measurement rather than a verified result.
+Full scoring, including the cases this project still gets wrong, is in
 [`eval/README.md`](eval/README.md).
 
 ---

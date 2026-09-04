@@ -1,5 +1,11 @@
 # Evaluation set
 
+> **These scores are internal, not independent.** Every comparison here was
+> made by the same party that produced one of the outputs, against a taxonomy
+> that party wrote. A human reference translation would settle it; it is parked
+> in [`reference/`](reference/) waiting on a Japanese reader. Read the numbers
+> as a self-assessment.
+
 The reference set the design doc (§7) calls for. Built during the caption-access testing on 2026-09-03.
 
 ## Fixtures

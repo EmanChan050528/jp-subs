@@ -1,5 +1,11 @@
 # Human reference translation
 
+> **Parked — blocked on a Japanese reader.** Both jobs below were attempted and
+> set aside: Job B needs Japanese, and Job A turned out to be more work than it
+> was worth to someone using the tool rather than building it. Nothing here is
+> abandoned; it is waiting on the right person. Until then the quality claims
+> stay marked as unverified wherever they appear.
+
 ## Why this exists
 
 Every quality claim in `../README.md` — "beats YouTube on 5 of 7 categories" —
