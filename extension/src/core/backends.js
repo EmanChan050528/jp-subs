@@ -34,13 +34,29 @@ export function ollamaBackend({
   temperature = 0.2,
   think = false,
   host = DEFAULT_OLLAMA_HOST,
+  /** Aborts the in-flight request — this is what makes Stop work mid-request. */
+  signal = null,
+  /** A single request has no progress of its own, so cap how long it may hang. */
+  timeoutMs = 15 * 60 * 1000,
 } = {}) {
   return async function ollama(prompt, { json = false } = {}) {
+    // Compose the caller's signal with a timeout. AbortSignal.any is too new to
+    // rely on for the browsers this manifest allows, so wire it by hand.
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+    const forward = () => controller.abort();
+    if (signal) {
+      if (signal.aborted) controller.abort();
+      else signal.addEventListener("abort", forward, { once: true });
+    }
+
     let res;
     try {
       res = await fetch(`${host}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           model,
           stream: false,
@@ -51,10 +67,22 @@ export function ollamaBackend({
         }),
       });
     } catch (err) {
+      if (timedOut) {
+        throw new Error(
+          `${model} did not answer within ${Math.round(timeoutMs / 60000)} minutes. ` +
+          `On a slower machine this usually means the model is too large — try a ` +
+          `smaller one (e.g. qwen3.5:4b) in Settings. Check "ollama ps" to see ` +
+          `whether it is loaded and running on GPU or CPU.`
+        );
+      }
+      if (controller.signal.aborted) throw new Error("Stopped.");
       throw new Error(
         `Cannot reach Ollama at ${host}. Is it running? ` +
         `Start it with "ollama serve", then "ollama pull ${model}". (${err.message})`
       );
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener?.("abort", forward);
     }
 
     if (!res.ok) {

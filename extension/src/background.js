@@ -231,6 +231,7 @@ function formatDuration(ms) {
  * it would look complete on the next visit with no way to tell.
  */
 async function stopRun(tabId, videoId, unitCount, translatedSoFar) {
+  inFlight.delete(tabId);
   setState(tabId, {
     running: false, phase: "cancelled", eta: null, stopping: false,
     translatedSoFar,
@@ -250,16 +251,29 @@ function toOverlayUnits(units, translations) {
 /** Tabs whose in-flight run has been abandoned (the viewer navigated away). */
 const cancelled = new Set();
 
+/**
+ * Aborts the request currently in flight for a tab.
+ *
+ * Without this, Stop only landed between chunks — and during pass 1, which is a
+ * single long request, it did not land at all until that request returned.
+ */
+const inFlight = new Map();
+
 async function translateTab(tabId, { force = false } = {}) {
   // Clear any leftover flag from a previous run before the first await. Doing
   // this later wiped out a stop pressed while the transcript was being
   // fetched.
   cancelled.delete(tabId);
+  inFlight.get(tabId)?.abort();
+
+  const controller = new AbortController();
+  inFlight.set(tabId, controller);
 
   const config = await settings();
   const backend = makeBackend(config.backend, {
     model: config.model,
     host: config.host,
+    signal: controller.signal,
   });
 
   setState(tabId, { running: true, phase: "extracting", error: null, done: 0, total: 0 });
@@ -288,7 +302,10 @@ async function translateTab(tabId, { force = false } = {}) {
   const transcript = extracted.data;
   const runVideoId = transcript.video_id;
   const units = segment(transcript.cues);
-  setState(tabId, { phase: "analysing", videoId: transcript.video_id, units: units.length });
+  setState(tabId, {
+    phase: "analysing", videoId: transcript.video_id, units: units.length,
+    analysingSince: Date.now(),
+  });
   await send(tabId, {
     type: "overlay:status",
     text: `Reading ${units.length} lines…`,
@@ -372,6 +389,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     translateTab(tabId, { force: !!msg.force })
       .then((r) => sendResponse({ ok: true, data: r }))
       .catch(async (err) => {
+        if (cancelled.has(tabId) || /^Stopped\.$/.test(err.message || "")) {
+          cancelled.delete(tabId);
+          inFlight.delete(tabId);
+          setState(tabId, { running: false, phase: "cancelled", stopping: false, eta: null });
+          await send(tabId, { type: "overlay:status", text: "" });
+          sendResponse({ ok: true, data: { stopped: true } });
+          return;
+        }
         setState(tabId, { running: false, phase: "error", error: err.message });
         await send(tabId, { type: "overlay:status", text: `Failed: ${err.message}` });
         sendResponse({ ok: false, error: err.message });
@@ -543,6 +568,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const tabId = msg.tabId ?? sender.tab?.id;
     if (tabId !== undefined) {
       cancelled.add(tabId);
+      // Abort the request in flight too, so a stop during pass 1 is immediate
+      // instead of waiting out a request that may run for minutes.
+      inFlight.get(tabId)?.abort();
       setState(tabId, { stopping: true });
       send(tabId, { type: "overlay:status", text: "Stopping…" });
     }

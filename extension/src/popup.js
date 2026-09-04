@@ -286,6 +286,25 @@ function stopPolling() {
   poll = null;
 }
 
+/**
+ * Pass 1 is one long request with no progress of its own. Without an elapsed
+ * count it looks identical to a hang — which is exactly what it was taken for
+ * on a slower machine.
+ */
+const SLOW_HINT_MS = 120000;
+
+function analysingText(since) {
+  let text = "Reading the whole transcript…";
+  if (!since) return text;
+  text += `\n${Math.round((Date.now() - since) / 1000)}s so far`;
+  if (Date.now() - since > SLOW_HINT_MS) {
+    text +=
+      "\nStill working. A large model on a slow machine can take several " +
+      "minutes here — try a smaller one in Settings.";
+  }
+  return text;
+}
+
 async function refreshRunState() {
   const res = await chrome.runtime.sendMessage({ type: "run:status", tabId });
   const state = res?.data || {};   // the worker may have been restarted
@@ -304,7 +323,10 @@ async function refreshRunState() {
         ? `Translating chunk ${state.done}/${state.total}` +
           (state.eta ? `\n~${state.eta} remaining` : "")
         : state.phase === "analysing"
-          ? "Reading the whole transcript…"
+          // One long request with no progress of its own. Without an elapsed
+          // count this looks identical to a hang, which is exactly what it was
+          // mistaken for on a slower machine.
+          ? analysingText(state.analysingSince)
           : "Getting transcript…";
     show(phase, "ok");
     return;
