@@ -25,7 +25,41 @@ Japanese on the video sampled. Good subtitles; unusable for line-level scoring.
 
 Worth revisiting if a video turns up with a tight, unannotated English track.
 
-## How to do it
+## Two different jobs
+
+The worksheet below assumes the person filling it in reads Japanese. If they do
+not, it cannot be done — and no amount of supplying a draft translation fixes
+that, because a reference derived from the output being scored is circular.
+
+There is a second, narrower job that **does not require Japanese**, and it
+happens to target the one category still lost to YouTube.
+
+### Job A — `EmteTL5Ij8g_who-is-it.txt` (no Japanese needed)
+
+Japanese omits the subject of most sentences, so the translator guesses who or
+what each line is about. **34 of 78 lines in this fixture assert a subject the
+Japanese never states — 44%.** That is the pro-drop exposure, quantified.
+
+Whether each guess is right is a question about what is on screen, which a
+viewer can answer and the pipeline cannot. The worksheet shows each guessed
+subject in `>>angle brackets<<`; the reply is `ok`, the real referent, or
+`unclear`.
+
+This does **not** validate translation quality, and a reference built this way
+must never be used to score it. It answers exactly one question: how often the
+pro-drop guess is wrong, and in which direction. That is worth knowing on its
+own — the design predicted pro-drop as the top quality risk, and it is the only
+category still failing.
+
+### Job B — the full worksheet (Japanese needed)
+
+`EmteTL5Ij8g_30-40min.worksheet.txt`, below. Still the only thing that settles
+the headline claim, and still blocked on someone who reads Japanese.
+
+Until it is done, "beats YouTube on 5 of 7 categories" remains an internal
+measurement, not an independent one, and the READMEs should keep saying so.
+
+## How to do it (Job B)
 
 Open `EmteTL5Ij8g_30-40min.worksheet.txt` and fill in the `EN:` lines.
 
@@ -60,6 +94,8 @@ That answers three things the project currently only assumes:
 
 ## Status
 
-- [ ] Worksheet filled in
-- [ ] Scored against both outputs
+- [ ] **Job A** — referent check filled in (no Japanese needed)
+- [ ] Job A scored: how often is the pro-drop guess wrong?
+- [ ] **Job B** — full reference translation (blocked: needs a Japanese reader)
+- [ ] Job B scored against both outputs
 - [ ] `../README.md` claims corrected if the numbers disagree

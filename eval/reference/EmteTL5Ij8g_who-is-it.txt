@@ -1,0 +1,221 @@
+# Who is each line about?  —  screen check
+#
+# You do not need Japanese for this. Japanese leaves the subject out of
+# most sentences, so the translator has to GUESS who or what each line is
+# about. 34 of 78 lines below are guesses. You can see the screen; it
+# cannot.
+#
+# Watch from 30:00 and scrub to each timestamp:
+#   https://www.youtube.com/watch?v=EmteTL5Ij8g&t=1800s
+#
+# For each line, the guessed subject is shown in >>angle brackets<<.
+# Write on the CHECK line one of:
+#     ok                      the guess matches what is happening on screen
+#     <who it really is>      e.g. 'the creature', 'the viewers', 'the game'
+#     unclear                 you genuinely cannot tell from the screen
+#
+# Skip any you are unsure about. Partial answers are still useful.
+
+--- 01  at 00:30:02
+JA     : いつの話なんてか。
+GUESS  : What time period are >>we<< talking about?
+asserts: we
+CHECK  : 
+
+--- 02  at 00:30:17
+JA     : カサカサ攻撃なかったよね、確か。
+GUESS  : There were no crackling sounds, right? >>I<<'m pretty sure.
+asserts: I
+CHECK  : 
+
+--- 03  at 00:30:26
+JA     : すごい昔にさ、来てってなんかこ来たらって言われたのめっちゃだいぶ遅い。
+GUESS  : A long time ago, someone said 'Come here,' and >>it<< took way too long for >>me<< to actually arrive.
+asserts: it, me
+CHECK  : 
+
+--- 04  at 00:30:38
+JA     : 招待されてから来るのだいぶ遅い話よね。
+GUESS  : >>It<<'s been a while since being invited before showing up, huh?
+asserts: It
+CHECK  : 
+
+--- 05  at 00:30:54
+JA     : なんかそういう辺りとかも全然触れてないので、ま、メインストーリー進めつつだけど、終わったら高感度イベントやりながら
+GUESS  : Since >>I<< haven't touched those areas at all yet, >>I<<'m thinking of progressing the main story and then tackling the high-difficulty event once >>it<<'s done.
+asserts: I, it
+CHECK  : 
+
+--- 06  at 00:31:11
+JA     : 進めてこうかななんて思っています。
+GUESS  : Once >>I<< find this one, will >>it<< keep coming back?
+asserts: I, it
+CHECK  : 
+
+--- 07  at 00:31:22
+JA     : これ1回見つけたらずっと来てくれるのかな?
+GUESS  : Come on, stay with >>me<<.
+asserts: me
+CHECK  : 
+
+--- 08  at 00:31:36
+JA     : あれ?
+GUESS  : Are there three of >>them<<?
+asserts: them
+CHECK  : 
+
+--- 09  at 00:31:48
+JA     : はい。
+GUESS  : There >>they<< are.
+asserts: they
+CHECK  : 
+
+--- 10  at 00:32:20
+JA     : なんかさ、もうすぐ終わっちゃおうって思ったらさ、なんか終わりたくなくてさ、すごい今日やるかどうかもちょっと悩んじゃったよね。
+GUESS  : >>I<< thought >>it<< was almost over, but >>I<< didn't want >>it<< to end and even hesitated about whether to play today or not.
+asserts: I, it
+CHECK  : 
+
+--- 11  at 00:33:07
+JA     : あの、3日のうちのなんか2回、2日くらいは参加するかなって思ってるんですけど、あとフルでは参加しないかも。
+GUESS  : >>I<<'m thinking about participating in two of the three days, maybe around two days, but might skip the full version.
+asserts: I
+CHECK  : 
+
+--- 12  at 00:33:26
+JA     : 前回のアークの時になんか自立神経壊れちゃったんで。
+GUESS  : >>My<< autonomic nervous system broke down during the last Arc.
+asserts: My
+CHECK  : 
+
+--- 13  at 00:33:35
+JA     : なんかさ、あの、長時間配信で壊れたんじゃなくて、あの、頑張らなきゃみたいな、やらなきゃみたいななんかなんて言うの?
+GUESS  : >>It<< wasn't from long streaming sessions breaking >>me<<, but more from feeling like >>I<< had to push myself and do things >>I<< shouldn't have.
+asserts: It, me, I
+CHECK  : 
+
+--- 14  at 00:34:14
+JA     : のでまちょっと要所要でやってこうかなと。
+GUESS  : So >>I<<'ll just do >>it<< whenever needed.
+asserts: I, it
+CHECK  : 
+
+--- 15  at 00:35:16
+JA     : あー、やめて。
+GUESS  : Ah, stop >>it<<.
+asserts: it
+CHECK  : 
+
+--- 16  at 00:35:25
+JA     : そう、なんか対人だったら参加するのやめようかなって思ってたんだけど、そうじゃないらしかったので、今回は参加しました。
+GUESS  : Yeah, >>I<< was thinking about stopping PvP participation altogether, but since that's not the case, >>I<< ended up joining this time.
+asserts: I
+CHECK  : 
+
+--- 17  at 00:35:34
+JA     : あの、基本的になんか、あの、対人ゲームあんまり得意じゃないので、なんか誰かときそうみたいなゲームになると
+GUESS  : Basically, >>I<<'m not very good at PvP games, so when >>it<<'s a game where >>you<< can team up with someone,
+asserts: I, it, you
+CHECK  : 
+
+--- 18  at 00:35:45
+JA     : なんかやってる側よりも見てる側の方が熱くなっちゃってなんか喧嘩にな、コメントが喧嘩になるのが結構嫌なので配信でなんか
+GUESS  : the viewers tend to get more excited than the players and things turn into arguments in the comments, which >>I<< really dislike.
+asserts: I
+CHECK  : 
+
+--- 19  at 00:35:56
+JA     : やりたくないなというのがあって。
+GUESS  : That's why >>I<< don't want to do that kind of thing on stream.
+asserts: I
+CHECK  : 
+
+--- 20  at 00:36:14
+JA     : だからかってお察しみたいにしていただけると
+GUESS  : So please understand that >>it<<'s because of PvP.
+asserts: it
+CHECK  : 
+
+--- 21  at 00:36:24
+JA     : こっち側落ちてないかな?
+GUESS  : >>I<<'m not falling behind on >>my<< end.
+asserts: I, my
+CHECK  : 
+
+--- 22  at 00:36:28
+JA     : あ、寝ちゃった。
+GUESS  : Ah, >>I<< fell asleep.
+asserts: I
+CHECK  : 
+
+--- 23  at 00:36:39
+JA     : そう、誰かときそうみたいなやつはあんまりあんまりなんですよね。
+GUESS  : Yeah, games where >>you<< can team up with someone are just not really for >>me<<.
+asserts: you, me
+CHECK  : 
+
+--- 24  at 00:36:47
+JA     : 晴れたね。
+GUESS  : >>It<<'s sunny now.
+asserts: It
+CHECK  : 
+
+--- 25  at 00:36:50
+JA     : なんか普段結構雨、雨の時にさ、夜当たる率高いからなんかあんまり雨の、ま、困ってないっていう。
+GUESS  : Usually, >>it<< rains a lot at night and the hit rate is high, so >>I<<'m not really bothered by rain.
+asserts: it, I
+CHECK  : 
+
+--- 26  at 00:37:19
+JA     : 仕様
+GUESS  : >>It<<'s a game mechanic.
+asserts: It
+CHECK  : 
+
+--- 27  at 00:37:38
+JA     : [音楽]これいつ使うんだも。
+GUESS  : [Music] When are >>we<< supposed to use this?
+asserts: we
+CHECK  : 
+
+--- 28  at 00:37:58
+JA     : 鉱石はいっぱいあると。
+GUESS  : >>I<<'ve got plenty of ore.
+asserts: I
+CHECK  : 
+
+--- 29  at 00:38:05
+JA     : そろそろ。
+GUESS  : >>It<<'s about time.
+asserts: It
+CHECK  : 
+
+--- 30  at 00:38:21
+JA     : んで逆に今度鉱石が全然足りない。
+GUESS  : But now >>I<<'m completely out of ore.
+asserts: I
+CHECK  : 
+
+--- 31  at 00:38:34
+JA     : 3つまで行けんのね。
+GUESS  : >>I<< can only go up to three levels.
+asserts: I
+CHECK  : 
+
+--- 32  at 00:39:02
+JA     : 時間がすぐ進むから全然足りないけど。
+GUESS  : Time's moving fast, so >>I<<'m totally low on resources.
+asserts: I
+CHECK  : 
+
+--- 33  at 00:39:22
+JA     : そろそろ本探したいなって思うけどさ、本もあんまり本もあんまりなの?
+GUESS  : >>I<< think >>it<<'s about time >>I<< looked for some seeds, but there aren't many books or seeds left?
+asserts: I, it
+CHECK  : 
+
+--- 34  at 00:39:56
+JA     : だから早くスプリンクラーをさ、いや、作ったと
+GUESS  : So >>I<< need to make a sprinkler ASAP, no wait, >>I<< already made one.
+asserts: I
+CHECK  : 
