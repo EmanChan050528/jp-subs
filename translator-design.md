@@ -321,7 +321,7 @@ Since then: a per-channel glossary that seeds the analysis pass and is editable 
 - [ ] **Is pro-drop solvable at all here?** The one failure category still lost to YouTube. 「あ、寝ちゃった。」 → "I fell asleep" where the thing falling asleep is on screen and nowhere in the text. May need vision rather than more context.
 - [ ] **Does the MV3 worker survive a multi-hour run?** A long translation is ~17 minutes of unbroken fetches. It has worked, but has never been deliberately stress-tested. If it fails, the fix is an offscreen document.
 - [ ] **Are the quality claims real?** Everything in [eval/README.md](eval/README.md) was scored by the same party that produced one of the outputs, against a taxonomy that party wrote. A human reference translation would settle it.
-- [ ] **Over-long subtitles.** 5.9% exceed two lines; Japanese expands 2–4× into English against 64-character source units. Prompt tuning was tried and measurably failed. Remaining levers are smaller units or accepting three lines.
+- [x] **Over-long subtitles.** Solved at the renderer, not in the pipeline. 5.9% of lines exceeded two lines; they are now split into sequential display cues across the unit's own span, taking over-84-character lines to 0.1% with no text lost. Shrinking source units was measured and rejected: ~3% slower, but mid-sentence splits rise from 324 to 466, reinventing the polarity failure this project's advantage rests on. Prompt tuning was tried earlier and measurably failed.
 
 ---
 

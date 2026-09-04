@@ -34,6 +34,99 @@ function dwellFor(text) {
   return Math.min(MAX_DWELL_MS, Math.max(MIN_DWELL_MS, needed));
 }
 
+/** Two lines of ~42 characters. Beyond this a cue cannot be read at a glance. */
+const MAX_CUE_CHARS = 84;
+
+/** Successive parts of one unit never appear closer together than this. */
+const MIN_PART_GAP_MS = 900;
+
+/**
+ * Break an over-long translation into displayable pieces.
+ *
+ * Japanese expands 2-4x into English, so ~6% of translations exceed what two
+ * lines hold — worst measured was 293 characters. Shrinking the source units
+ * instead would cut Japanese clauses before their verb, and since Japanese puts
+ * negation at the end of a clause that reinvents the exact failure this project
+ * beats YouTube on. Splitting at display time leaves the translation untouched.
+ *
+ * Cuts at the latest sentence end that fits; failing that a clause break;
+ * failing that a space.
+ */
+function splitForDisplay(text, max = MAX_CUE_CHARS) {
+  const clean = (text || "").trim();
+  if (clean.length <= max) return [clean];
+
+  const parts = [];
+  let rest = clean;
+
+  while (rest.length > max) {
+    const window = rest.slice(0, max + 1);
+    let cut = -1;
+
+    for (const pattern of [/[.!?]["'”’)\]]?\s/g, /[,;:—–]\s/g, /\s/g]) {
+      let match;
+      let latest = -1;
+      pattern.lastIndex = 0;
+      // Only accept a break past a third of the line, or the pieces come out
+      // lopsided — a two-word cue followed by a full one.
+      while ((match = pattern.exec(window)) !== null) {
+        if (match.index >= max * 0.35) latest = match.index + match[0].length;
+      }
+      if (latest > 0) { cut = latest; break; }
+    }
+
+    if (cut <= 0) cut = max;           // one very long token: cut it
+    parts.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+
+  if (rest) parts.push(rest);
+  return parts.filter(Boolean);
+}
+
+/**
+ * Lay a unit's parts out across its own time span, proportionally to length.
+ *
+ * The timing within a unit is estimated, which is the guessing that word-level
+ * timestamps removed at the cue level. It is a much smaller version of it: the
+ * error is bounded by one unit rather than by a 15-second caption cue, and it
+ * only applies to the ~6% of lines that need splitting at all.
+ */
+function layOutParts(unit, nextStartMs) {
+  const whole = [{ t_ms: unit.t_ms, end_ms: unit.end_ms, en: (unit.en || "").trim() }];
+  const parts = splitForDisplay(unit.en);
+  if (parts.length === 1) return whole;
+
+  // The usable window ends when the next line starts, not when this unit's own
+  // span does — 43% of units overlap their neighbour, and a part scheduled
+  // inside that overlap would be superseded before it was read.
+  const windowEnd = Math.min(unit.end_ms, Number.isFinite(nextStartMs) ? nextStartMs : Infinity);
+  const windowMs = windowEnd - unit.t_ms;
+
+  // Not enough room to give every part a readable slice. Showing the text
+  // whole and over-long is worse to read but loses nothing; splitting here
+  // would silently drop the tail of the sentence.
+  if (windowMs < parts.length * MIN_PART_GAP_MS) return whole;
+
+  const total = parts.reduce((n, p) => n + p.length, 0) || 1;
+  const cues = [];
+  let consumed = 0;
+
+  parts.forEach((part, i) => {
+    const start = unit.t_ms + Math.round(windowMs * (consumed / total));
+    consumed += part.length;
+    const isLast = i === parts.length - 1;
+    cues.push({
+      t_ms: start,
+      // The last part keeps the unit's own end so it is not cut short.
+      end_ms: isLast ? unit.end_ms : unit.t_ms + Math.round(windowMs * (consumed / total)),
+      en: part,
+    });
+  });
+
+  return cues;
+}
+
 class Overlay {
   constructor() {
     this.units = [];          // [{ t_ms, end_ms, en }], sorted by t_ms
@@ -115,18 +208,25 @@ class Overlay {
   // ----------------------------------------------------------------- content
 
   setUnits(units) {
-    this.units = (units || [])
+    const sorted = (units || [])
       .filter((u) => u.en && u.en.trim())
-      .sort((a, b) => a.t_ms - b.t_ms)
-      .map((u) => ({
-        ...u,
-        // How long this line may stay up: whichever is longer, its own cue
+      .sort((a, b) => a.t_ms - b.t_ms);
+
+    // Units become display cues: usually one each, but an over-long
+    // translation becomes several shown in sequence across its own span.
+    // Everything downstream (indexAt, render) is unchanged — it just sees a
+    // slightly longer list.
+    this.units = sorted
+      .flatMap((u, i) => layOutParts(u, sorted[i + 1]?.t_ms ?? Infinity))
+      .map((c) => ({
+        ...c,
+        // How long this line may stay up: whichever is longer, its own span
         // plus grace, or enough time to actually read it.
         //
-        // Overrunning the next unit is harmless — indexAt picks the latest
-        // unit whose start has passed, so the next line takes over regardless.
+        // Overrunning the next cue is harmless — indexAt picks the latest cue
+        // whose start has passed, so the next line takes over regardless.
         // This only extends lines that would otherwise hit a gap.
-        until_ms: Math.max(u.end_ms + END_GRACE_MS, u.t_ms + dwellFor(u.en)),
+        until_ms: Math.max(c.end_ms + END_GRACE_MS, c.t_ms + dwellFor(c.en)),
       }));
     this.lastIndex = -1;
     this.setStatus("");
@@ -218,3 +318,4 @@ class Overlay {
 // Content scripts cannot be ES modules, so publish on the shared isolated-world
 // global instead of exporting. overlay.js is listed before content.js.
 globalThis.JPSubOverlay = Overlay;
+globalThis.JPSubSplit = splitForDisplay;   // exposed for tests

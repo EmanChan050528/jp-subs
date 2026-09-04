@@ -56,6 +56,28 @@ is disabled — a second run on the same video buys nothing and costs minutes of
 local inference. **Re-translate** appears alongside it as the escape hatch. The
 state is per-video, so navigating to a different video re-arms the button.
 
+### Long lines are split at display time
+
+Japanese expands 2–4x into English, so ~6% of translations exceeded what two
+lines can hold — worst measured was 293 characters. The overlay breaks those
+into pieces shown in sequence across the unit's own time span, cutting at the
+latest sentence end that fits, then a clause break, then a space.
+
+Measured on the 8-hour archive: 5,038 units become 5,380 display cues (291 of
+them split), and lines over 84 characters drop from **5.9% to 0.1%**, with the
+maximum from 293 to 164 — and no text lost.
+
+Splitting is skipped when there is not room to give every piece a readable
+slice — 43% of units overlap their neighbour, and a piece scheduled inside that
+overlap would be superseded before it was read. In that case the line is shown
+whole and over-long, which reads worse but loses nothing.
+
+**Why not shorter source units instead?** That was measured and rejected.
+Dropping `maxChars` from 64 to 44 costs only ~3% in speed, but raises
+mid-sentence splits from 324 to 466 on the same video — each one a Japanese
+clause cut before its verb, which is exactly the mechanism behind the polarity
+inversions this project beats YouTube on.
+
 ### Per-channel glossary
 
 Names and recurring vocabulary belong to a channel, not to one video, so they
