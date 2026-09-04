@@ -5,9 +5,12 @@
   <style>
     :root { color-scheme: light dark; }
     body {
-      width: 330px;
+      /* Chrome caps a popup at 800x600 and sizes to content below that. The
+         min-height stops the panel jumping around as sections appear. */
+      width: 400px;
+      min-height: 430px;
       margin: 0;
-      padding: 14px;
+      padding: 16px;
       font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
     }
     h1 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
@@ -58,8 +61,9 @@
     textarea {
       width: 100%;
       box-sizing: border-box;
-      padding: 5px 6px;
-      font: 12px/1.4 ui-monospace, Consolas, monospace;
+      min-height: 104px;
+      padding: 7px 8px;
+      font: 13px/1.55 ui-monospace, Consolas, monospace;
       border: 1px solid rgba(128, 128, 128, 0.45);
       border-radius: 4px;
       background: transparent;
@@ -95,9 +99,9 @@
     <summary>Channel glossary</summary>
     <div class="note" id="glossaryWho"></div>
     <label for="gNames">Names — one per line, <code>japanese = english</code></label>
-    <textarea id="gNames" rows="4" spellcheck="false"></textarea>
+    <textarea id="gNames" rows="5" spellcheck="false"></textarea>
     <label for="gTerms">Terms</label>
-    <textarea id="gTerms" rows="4" spellcheck="false"></textarea>
+    <textarea id="gTerms" rows="5" spellcheck="false"></textarea>
     <button id="saveGlossary" class="secondary">Save glossary</button>
     <div class="note" id="glossaryNote"></div>
   </details>
