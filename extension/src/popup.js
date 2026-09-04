@@ -310,6 +310,10 @@ async function refreshRunState() {
   const state = res?.data || {};   // the worker may have been restarted
 
   if (state.running) {
+    // Poll from wherever we learned a run is going, not only when this popup
+    // started it. Reopening the popup mid-run used to render one frozen
+    // snapshot and never update — which looked exactly like a hang.
+    if (!poll) poll = setInterval(refreshRunState, 500);
     goButton.disabled = true;
     saveButton.disabled = true;
     // Stopping takes effect at the next chunk boundary, so say so rather than
@@ -319,7 +323,9 @@ async function refreshRunState() {
     stopButton.textContent = state.stopping ? "Stopping…" : "Stop translating";
     setProgress(state.done || 0, state.total || 0);
     const phase =
-      state.phase === "translating" && state.total
+      state.phase === "translating" && !state.total
+        ? "Starting the first chunk…"
+      : state.phase === "translating" && state.total
         ? `Translating chunk ${state.done}/${state.total}` +
           (state.eta ? `\n~${state.eta} remaining` : "")
         : state.phase === "analysing"

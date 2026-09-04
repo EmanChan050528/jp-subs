@@ -325,7 +325,17 @@ async function translateTab(tabId, { force = false } = {}) {
   // pressed during it only lands here — up to ~30 s on a long video.
   if (cancelled.has(tabId)) return stopRun(tabId, runVideoId, units.length, 0);
 
-  setState(tabId, { phase: "translating" });
+  // Announce pass 2 before the first chunk, not after it. Nothing was sent
+  // between pass 1 finishing and chunk 1 completing, so the video sat on
+  // "Reading N lines…" for the whole first chunk — minutes, on a slow machine.
+  const chunkCount = Math.max(1, Math.ceil(units.length / (Number(config.size) || 20)));
+  setState(tabId, { phase: "translating", done: 0, total: chunkCount, eta: null });
+  await send(tabId, {
+    type: "overlay:status",
+    videoId: runVideoId,
+    text: `Translating 0/${chunkCount}…`,
+  });
+
   const startedAt = Date.now();
 
   const { failures, translations: translationsOut, stopped } = await translateUnits(

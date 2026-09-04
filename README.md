@@ -56,6 +56,11 @@ one long request with nothing to show until it finishes, so it looks frozen.
 `ollama ps` while a translation is running shows whether the model is on GPU or
 CPU. If it says CPU, drop a size.
 
+**CPU-only is slow, not broken.** Without a GPU expect roughly 5-10x the video's
+length rather than the 28x-faster-than-real-time figures below — a 10-minute
+video can take half an hour. It still works; start it and come back. The popup
+shows which phase it is in and how long that phase has been running.
+
 ### 2. Let Ollama accept the extension
 
 This step is easy to miss and nothing will work without it. Ollama rejects
