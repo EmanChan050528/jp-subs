@@ -41,8 +41,20 @@ ollama pull qwen3.5:9b
 
 Any Ollama model works and you can switch later in the extension, but this one
 is a good default: it is strong at Japanese, fits comfortably in 12 GB of VRAM,
-and has a large context window. `qwen3.5:4b` is a smaller, faster, less accurate
-alternative.
+and has a large context window.
+
+**On a lower-end machine, start smaller.** A 9B model without a capable GPU runs
+on the CPU, where a single step can take many minutes — and the first phase is
+one long request with nothing to show until it finishes, so it looks frozen.
+
+| Your machine | Try |
+|---|---|
+| 8 GB+ VRAM GPU | `qwen3.5:9b` |
+| Weaker GPU, or 16 GB+ RAM | `qwen3.5:4b` |
+| Older laptop, no real GPU | `qwen3.5:2b` |
+
+`ollama ps` while a translation is running shows whether the model is on GPU or
+CPU. If it says CPU, drop a size.
 
 ### 2. Let Ollama accept the extension
 
@@ -248,6 +260,13 @@ restarted afterwards.
 
 **"This video has no Japanese caption track"** — exactly that; there is no
 speech-recognition fallback.
+
+**Stuck on "Reading the whole transcript"** — that phase is a single long
+request, so it shows no progress until it completes. The popup counts the
+seconds; if the number is climbing, it is working, not frozen. On a slow machine
+this step can take several minutes with a large model. Run `ollama ps` to see
+whether the model is on GPU or CPU, and pick a smaller model in Settings if it
+is on CPU. **Stop translating** cancels immediately, mid-request.
 
 **Nothing appears and no error** — check the extension's service worker console
 (`chrome://extensions` → JP Subs → **service worker**) and the page console for
