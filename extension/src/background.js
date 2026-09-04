@@ -348,6 +348,7 @@ async function translateTab(tabId, { force = false } = {}) {
     video_id: transcript.video_id,
     title: transcript.title,
     model: config.model,
+    channel_id: transcript.channel_id || null,
     pipeline: PIPELINE_VERSION,
     at: Date.now(),
     units: overlayUnits,
@@ -375,6 +376,47 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await send(tabId, { type: "overlay:status", text: `Failed: ${err.message}` });
         sendResponse({ ok: false, error: err.message });
       });
+    return true; // async
+  }
+
+  if (msg?.type === "glossary:apply") {
+    // Rewrite an already-cached translation in place, so correcting a name
+    // does not cost another full run.
+    //
+    // This works on the ENGLISH text, because that is all a cached entry
+    // holds. The Japanese-to-English glossary cannot be applied backwards; what
+    // makes it possible is that an *edit* carries both the old and new English,
+    // so the change is a plain substitution.
+    (async () => {
+      const entry = await cacheGet(msg.videoId);
+      if (!entry) throw new Error("Nothing cached for this video.");
+
+      let changed = 0;
+      const units = entry.units.map((u) => {
+        let en = u.en;
+        for (const { from, to } of msg.replacements || []) {
+          if (!from || !to || from === to) continue;
+          // Word boundaries so "Frea" does not also rewrite "Freak". Only
+          // usable when the old value starts and ends with a word character;
+          // otherwise fall back to a literal match.
+          const esc = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const wordish = /^\w/.test(from) && /\w$/.test(from);
+          const re = new RegExp(wordish ? `\\b${esc}\\b` : esc, "g");
+          if (re.test(en)) { en = en.replace(re, to); }
+        }
+        if (en !== u.en) changed++;
+        return { ...u, en };
+      });
+
+      if (changed) {
+        await cachePut(msg.videoId, { ...entry, units, at: Date.now() });
+        const tabId = msg.tabId ?? sender.tab?.id;
+        await send(tabId, { type: "overlay:units", videoId: msg.videoId, units, status: "" });
+      }
+      return { changed, total: entry.units.length };
+    })()
+      .then((data) => sendResponse({ ok: true, data }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true; // async
   }
 

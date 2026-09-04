@@ -106,6 +106,25 @@ category to keep the prompt small.
 This compounds with the cache: channels repeat, so the glossary gets better the
 more of a channel you watch.
 
+**Editing an existing entry updates subtitles immediately, without
+re-translating.** Correcting `Shiranui Frea` to `Shiranui Flare` rewrites the
+cached translation in place and refreshes what is on screen.
+
+That is possible only because an *edit* carries both the old and the new
+English. The glossary maps Japanese to English, but a cached translation holds
+English only, so it cannot be re-applied from the Japanese side. The change from
+one value to another is a plain substitution, and that is what gets applied.
+
+The limits follow from the same fact, and the popup says which case it hit:
+
+- **A newly added entry cannot be applied** — nothing records how the model
+  rendered that term, so there is no old wording to search for. It applies to
+  the next translation; use **Re-translate** for this one.
+- **It only fixes the surface string.** A term whose meaning changed the
+  sentence around it still needs a re-translation.
+- Matching is word-bounded and case-sensitive, so `Frea` does not rewrite
+  `freak` or `Freakazoid`. Covered by `src/glossary-apply.test.mjs`.
+
 **It is editable.** The popup shows the channel's glossary as
 `japanese = english`, one per line, for both names and terms. Seeding makes a
 name *consistent*, not necessarily *correct* — whatever the first video decided

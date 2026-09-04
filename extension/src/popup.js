@@ -162,6 +162,10 @@ $("model").addEventListener("change", async (e) => {
 // call gets corrected once instead of recurring on every video.
 
 let currentChannel = null;
+// What the glossary held when the editor was populated. The difference between
+// this and what gets saved is the only thing that can be applied to already
+// translated subtitles: it carries the OLD English as well as the new.
+let glossaryBefore = { names: {}, terms: {} };
 
 /** "japanese = english" per line. Removing a line removes the entry. */
 function parseGlossary(text) {
@@ -190,6 +194,7 @@ async function loadGlossary() {
   });
   if (!res?.ok) return;
 
+  glossaryBefore = { names: res.data.names || {}, terms: res.data.terms || {} };
   $("gNames").value = formatGlossary(res.data.names);
   $("gTerms").value = formatGlossary(res.data.terms);
   $("glossaryWho").textContent =
@@ -207,9 +212,44 @@ $("saveGlossary").addEventListener("click", () =>
       names: parseGlossary($("gNames").value),
       terms: parseGlossary($("gTerms").value),
     });
-    $("glossaryNote").textContent = res?.ok
-      ? "Saved. Kept permanently, and not affected by clearing the cache. Applies to the next translation on this channel — use Re-translate to redo this one."
-      : res?.error || "Could not save.";
+    if (!res?.ok) {
+      $("glossaryNote").textContent = res?.error || "Could not save.";
+      return;
+    }
+
+    const names = parseGlossary($("gNames").value);
+    const terms = parseGlossary($("gTerms").value);
+
+    // Only a CHANGED value can be applied to existing subtitles: it tells us
+    // what the old English was. A newly added entry has nothing to search for,
+    // because we never learn how the model rendered that term.
+    const replacements = [];
+    for (const [group, before] of [[names, glossaryBefore.names], [terms, glossaryBefore.terms]]) {
+      for (const [ja, to] of Object.entries(group)) {
+        const from = before?.[ja];
+        if (from && from !== to) replacements.push({ from, to });
+      }
+    }
+    glossaryBefore = { names, terms };
+
+    let note = "Saved. Kept permanently, and unaffected by clearing the cache.";
+    if (replacements.length && cachedHere) {
+      const applied = await chrome.runtime.sendMessage({
+        type: "glossary:apply", tabId, videoId: currentVideoId, replacements,
+      });
+      note += applied?.ok
+        ? ` Updated ${applied.data.changed} line(s) in this video without re-translating.`
+        : " Could not update the existing subtitles.";
+      if (applied?.ok && applied.data.changed === 0) {
+        note = "Saved, but nothing in this video's subtitles matched the old wording. " +
+               "Use Re-translate to apply it properly.";
+      }
+    } else if (replacements.length) {
+      note += " Applies to the next translation on this channel.";
+    } else {
+      note += " New entries apply to the next translation — use Re-translate to redo this one.";
+    }
+    $("glossaryNote").textContent = note;
   }));
 
 async function refreshCache() {
