@@ -351,6 +351,36 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true; // async
   }
 
+  if (msg?.type === "channel:get") {
+    channelGlossary(msg.channelId)
+      .then((g) => sendResponse({ ok: true, data: g || { names: {}, terms: {} } }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true; // async
+  }
+
+  if (msg?.type === "channel:save") {
+    (async () => {
+      if (!msg.channelId) throw new Error("No channel for this page.");
+      const key = "chan:" + msg.channelId;
+      const prev = (await chrome.storage.local.get(key))[key] || {};
+      // Written wholesale: what the editor shows is exactly what is stored, so
+      // removing a line removes the entry.
+      await chrome.storage.local.set({
+        [key]: {
+          ...prev,
+          author: msg.author || prev.author || null,
+          names: msg.names || {},
+          terms: msg.terms || {},
+          at: Date.now(),
+          editedByHand: true,
+        },
+      });
+    })()
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true; // async
+  }
+
   if (msg?.type === "channel:info") {
     channelGlossary(msg.channelId)
       .then((g) => sendResponse({ ok: true, data: g && {

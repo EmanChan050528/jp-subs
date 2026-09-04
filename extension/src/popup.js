@@ -127,6 +127,62 @@ $("model").addEventListener("change", async (e) => {
   if (value) await chrome.storage.local.set({ model: value });
 });
 
+// ---------------------------------------------------------- channel glossary
+//
+// Seeding makes names *consistent* across a channel, not necessarily *correct*
+// — whatever the first video decided gets propagated. Editing is how a wrong
+// call gets corrected once instead of recurring on every video.
+
+let currentChannel = null;
+
+/** "japanese = english" per line. Removing a line removes the entry. */
+function parseGlossary(text) {
+  const out = {};
+  for (const line of text.split("\n")) {
+    const at = line.indexOf("=");
+    if (at < 1) continue;
+    const key = line.slice(0, at).trim();
+    const value = line.slice(at + 1).trim();
+    if (key && value) out[key] = value;
+  }
+  return out;
+}
+
+function formatGlossary(obj) {
+  return Object.entries(obj || {})
+    .map(([k, v]) => `${k} = ${v}`)
+    .join("\n");
+}
+
+async function loadGlossary() {
+  if (!currentChannel?.id) return;
+  const res = await chrome.runtime.sendMessage({
+    type: "channel:get",
+    channelId: currentChannel.id,
+  });
+  if (!res?.ok) return;
+
+  $("gNames").value = formatGlossary(res.data.names);
+  $("gTerms").value = formatGlossary(res.data.terms);
+  $("glossaryWho").textContent =
+    (currentChannel.author || "This channel") +
+    (res.data.videos ? ` · learned from ${res.data.videos} video(s)` : " · nothing learned yet");
+  $("glossaryBox").hidden = false;
+}
+
+$("saveGlossary").addEventListener("click", async () => {
+  const res = await chrome.runtime.sendMessage({
+    type: "channel:save",
+    channelId: currentChannel?.id,
+    author: currentChannel?.author,
+    names: parseGlossary($("gNames").value),
+    terms: parseGlossary($("gTerms").value),
+  });
+  $("glossaryNote").textContent = res?.ok
+    ? "Saved. Applies to the next translation on this channel — use Re-translate to redo this video."
+    : res?.error || "Could not save.";
+});
+
 async function refreshCache() {
   const res = await chrome.runtime.sendMessage({ type: "cache:stats" });
   const el = $("cacheNote");
@@ -238,7 +294,9 @@ async function init() {
   }
 
   currentVideoId = d.videoId || null;
+  currentChannel = d.channelId ? { id: d.channelId, author: d.author } : null;
   $("title").textContent = d.title || d.videoId || "";
+  loadGlossary();
 
   const rows = [
     ["Duration", d.durationSeconds ? `${Math.round(d.durationSeconds / 60)} min` : "?"],

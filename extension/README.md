@@ -67,6 +67,14 @@ category to keep the prompt small.
 This compounds with the cache: channels repeat, so the glossary gets better the
 more of a channel you watch.
 
+**It is editable.** The popup shows the channel's glossary as
+`japanese = english`, one per line, for both names and terms. Seeding makes a
+name *consistent*, not necessarily *correct* — whatever the first video decided
+gets propagated — so editing is how a wrong call is corrected once rather than
+recurring on every video. Saving writes the lists wholesale, so deleting a line
+deletes the entry. Changes apply to the next translation on that channel; use
+**Re-translate** to redo the current video with them.
+
 ### Caching
 
 A finished translation is stored under its video id, so re-opening a video is
