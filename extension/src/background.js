@@ -25,6 +25,99 @@ const DEFAULTS = {
 /** Per-tab run state, polled by the popup. */
 const runs = new Map();
 
+// ------------------------------------------------------------------- cache
+//
+// Translating a 4-hour VOD takes ~15 minutes, so re-watching one should not
+// repeat it. But chrome.storage.local is capped at 10 MB and a long VOD is
+// roughly half a megabyte of units, so this is deliberately NOT unbounded:
+// it holds a byte budget and evicts least-recently-used entries. Without that
+// the cache would simply start failing writes after ~20 long videos.
+
+const CACHE_PREFIX = "cache:";
+const CACHE_INDEX = "cacheIndex";
+const CACHE_BUDGET_BYTES = 7 * 1024 * 1024; // headroom under the 10 MB quota
+
+async function readIndex() {
+  return (await chrome.storage.local.get(CACHE_INDEX))[CACHE_INDEX] || {};
+}
+
+async function writeIndex(index) {
+  await chrome.storage.local.set({ [CACHE_INDEX]: index });
+}
+
+async function cacheGet(videoId) {
+  if (!videoId) return null;
+  const key = CACHE_PREFIX + videoId;
+  const entry = (await chrome.storage.local.get(key))[key];
+  if (!entry) return null;
+
+  // Touch it so eviction sees recent use, not just recent writes.
+  const index = await readIndex();
+  if (index[videoId]) {
+    index[videoId].at = Date.now();
+    await writeIndex(index);
+  }
+  return entry;
+}
+
+async function cachePut(videoId, entry) {
+  if (!videoId) return;
+  const key = CACHE_PREFIX + videoId;
+  const index = await readIndex();
+  index[videoId] = {
+    bytes: JSON.stringify(entry).length,
+    at: Date.now(),
+    title: entry.title || null,
+    model: entry.model || null,
+    units: entry.units.length,
+  };
+  try {
+    await chrome.storage.local.set({ [key]: entry });
+    await writeIndex(index);
+    await evict();
+  } catch (err) {
+    // A failed cache write must never fail the run — the subtitles are
+    // already on screen by this point.
+    console.warn("[jpsub] could not cache:", err?.message || err);
+  }
+}
+
+async function evict() {
+  const index = await readIndex();
+  let total = Object.values(index).reduce((n, e) => n + (e.bytes || 0), 0);
+  if (total <= CACHE_BUDGET_BYTES) return;
+
+  const byAge = Object.entries(index).sort((a, b) => (a[1].at || 0) - (b[1].at || 0));
+  const drop = [];
+  for (const [videoId, meta] of byAge) {
+    if (total <= CACHE_BUDGET_BYTES) break;
+    drop.push(CACHE_PREFIX + videoId);
+    total -= meta.bytes || 0;
+    delete index[videoId];
+  }
+  if (drop.length) {
+    await chrome.storage.local.remove(drop);
+    await writeIndex(index);
+    console.debug(`[jpsub] evicted ${drop.length} cached video(s)`);
+  }
+}
+
+async function cacheStats() {
+  const index = await readIndex();
+  const entries = Object.values(index);
+  return {
+    videos: entries.length,
+    bytes: entries.reduce((n, e) => n + (e.bytes || 0), 0),
+    budget: CACHE_BUDGET_BYTES,
+  };
+}
+
+async function cacheClear() {
+  const index = await readIndex();
+  const keys = Object.keys(index).map((v) => CACHE_PREFIX + v);
+  await chrome.storage.local.remove([...keys, CACHE_INDEX]);
+}
+
 function setState(tabId, patch) {
   const prev = runs.get(tabId) || {};
   const next = { ...prev, ...patch };
@@ -61,7 +154,7 @@ function toOverlayUnits(units, translations) {
     .filter((u) => u.en);
 }
 
-async function translateTab(tabId) {
+async function translateTab(tabId, { force = false } = {}) {
   const config = await settings();
   const backend = makeBackend(config.backend, {
     model: config.model,
@@ -69,6 +162,23 @@ async function translateTab(tabId) {
   });
 
   setState(tabId, { running: true, phase: "extracting", error: null, done: 0, total: 0 });
+
+  // Check the cache before extracting anything: a hit should cost no work at
+  // all, not just no model calls.
+  if (!force) {
+    const info = await chrome.tabs.sendMessage(tabId, { type: "detect" }).catch(() => null);
+    const videoId = info?.ok ? info.data.videoId : null;
+    const hit = await cacheGet(videoId);
+    if (hit) {
+      await send(tabId, { type: "overlay:units", units: hit.units, status: "" });
+      setState(tabId, {
+        running: false, phase: "done", failures: [], eta: null,
+        videoId, units: hit.units.length, fromCache: true, cachedModel: hit.model,
+      });
+      return { units: hit.units.length, failures: [], fromCache: true };
+    }
+  }
+
   await send(tabId, { type: "overlay:status", text: "Getting transcript…" });
 
   const extracted = await chrome.tabs.sendMessage(tabId, { type: "extract" });
@@ -88,7 +198,7 @@ async function translateTab(tabId) {
   setState(tabId, { phase: "translating" });
   const startedAt = Date.now();
 
-  const { failures } = await translateUnits(
+  const { failures, translations: translationsOut } = await translateUnits(
     units, glossary, backend, config, log,
     (partial, done, total) => {
       // Chunks vary in length, so estimate from the mean so far rather than
@@ -111,9 +221,18 @@ async function translateTab(tabId) {
     }
   );
 
+  const overlayUnits = toOverlayUnits(units, translationsOut);
+  await cachePut(transcript.video_id, {
+    video_id: transcript.video_id,
+    title: transcript.title,
+    model: config.model,
+    at: Date.now(),
+    units: overlayUnits,
+  });
+
   setState(tabId, {
     running: false, phase: "done", failures, eta: null,
-    tookMs: Date.now() - startedAt,
+    fromCache: false, tookMs: Date.now() - startedAt,
   });
   await send(tabId, { type: "overlay:status", text: "" });
   return { units: units.length, failures };
@@ -126,13 +245,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: false, error: "Already running on this tab." });
       return false;
     }
-    translateTab(tabId)
+    translateTab(tabId, { force: !!msg.force })
       .then((r) => sendResponse({ ok: true, data: r }))
       .catch(async (err) => {
         setState(tabId, { running: false, phase: "error", error: err.message });
         await send(tabId, { type: "overlay:status", text: `Failed: ${err.message}` });
         sendResponse({ ok: false, error: err.message });
       });
+    return true; // async
+  }
+
+  if (msg?.type === "cache:stats") {
+    cacheStats().then((data) => sendResponse({ ok: true, data }));
+    return true; // async
+  }
+
+  if (msg?.type === "cache:clear") {
+    cacheClear().then(() => sendResponse({ ok: true }));
     return true; // async
   }
 

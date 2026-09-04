@@ -127,6 +127,22 @@ $("model").addEventListener("change", async (e) => {
   if (value) await chrome.storage.local.set({ model: value });
 });
 
+async function refreshCache() {
+  const res = await chrome.runtime.sendMessage({ type: "cache:stats" });
+  const el = $("cacheNote");
+  if (!res?.ok) { el.textContent = "unavailable"; return; }
+  const { videos, bytes, budget } = res.data;
+  const mb = (n) => (n / (1024 * 1024)).toFixed(1);
+  el.textContent = videos
+    ? `${videos} video${videos === 1 ? "" : "s"}, ${mb(bytes)} of ${mb(budget)} MB. Oldest are dropped when full.`
+    : "empty";
+}
+
+$("clearCache").addEventListener("click", async () => {
+  await chrome.runtime.sendMessage({ type: "cache:clear" });
+  await refreshCache();
+});
+
 $("host").addEventListener("change", async (e) => {
   const value = e.target.value.trim();
   if (value) await chrome.storage.local.set({ host: value });
@@ -183,9 +199,12 @@ async function refreshRunState() {
   else if (state.phase === "done") {
     const failed = state.failures?.length;
     show(
-      `Done — ${state.units} lines.` +
-      (failed ? `\n${failed} chunk problem(s); some lines may be blank.` : ""),
-      failed ? "err" : "ok"
+      state.fromCache
+        ? `Loaded from cache — ${state.units} lines` +
+          (state.cachedModel ? ` (${state.cachedModel})` : "")
+        : `Done — ${state.units} lines.` +
+          (failed ? `\n${failed} chunk problem(s); some lines may be blank.` : ""),
+      failed && !state.fromCache ? "err" : "ok"
     );
   }
 }
@@ -195,6 +214,7 @@ async function refreshRunState() {
 async function init() {
   await loadSettings();
   loadModels();   // not awaited: never let a slow Ollama hold up the UI
+  refreshCache();
 
   const tab = await activeTab();
   tabId = tab?.id;
@@ -240,7 +260,7 @@ async function init() {
   await refreshRunState();
 }
 
-async function startRun() {
+async function startRun({ force = false } = {}) {
   goButton.disabled = true;
   againButton.hidden = true;
   saveButton.disabled = true;
@@ -250,7 +270,7 @@ async function startRun() {
   stopPolling();
   poll = setInterval(refreshRunState, 500);
 
-  const res = await chrome.runtime.sendMessage({ type: "run:start", tabId });
+  const res = await chrome.runtime.sendMessage({ type: "run:start", tabId, force });
   await refreshRunState();
   if (res && !res.ok) {
     stopPolling();
@@ -265,7 +285,8 @@ goButton.addEventListener("click", startRun);
 
 againButton.addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ type: "run:clear", tabId });
-  await startRun();
+  // Bypass the cache: re-translate means re-translate.
+  await startRun({ force: true });
 });
 
 saveButton.addEventListener("click", async () => {

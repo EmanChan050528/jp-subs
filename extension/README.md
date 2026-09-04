@@ -56,6 +56,20 @@ is disabled — a second run on the same video buys nothing and costs minutes of
 local inference. **Re-translate** appears alongside it as the escape hatch. The
 state is per-video, so navigating to a different video re-arms the button.
 
+### Caching
+
+A finished translation is stored under its video id, so re-opening a video is
+instant and costs nothing. **Re-translate** bypasses the cache.
+
+It is deliberately bounded, not permanent. `chrome.storage.local` is capped at
+10 MB and a 4-hour VOD is roughly half a megabyte of units, so an unbounded
+cache would start failing writes after about twenty long videos. Instead there
+is a 7 MB budget and least-recently-used eviction: reading an entry refreshes
+it, so videos you actually revisit survive and stale ones fall out. Settings
+shows current usage and a **Clear cache** button.
+
+Rough capacity: ~14 four-hour VODs, or a couple of hundred anime episodes.
+
 **You can tab away while it runs.** The pipeline lives in the service worker,
 which is not tied to tab visibility or focus. Do not close the YouTube tab or
 navigate it to a different video mid-run — extraction and delivery both target
@@ -177,7 +191,7 @@ Test against these, in order:
       fetches keep it alive and the pipeline is a continuous fetch chain, but a
       long video with a slow model may still be at risk. If runs die partway,
       move the pipeline into an offscreen document.
-- [ ] **No result caching.** Re-watching re-translates from scratch (step 4).
+- [x] ~~No result caching~~ — done. See below.
 - [ ] **No ahead-of-playhead scheduling.** Chunks are translated in order from
       the start of the video, not from the playhead (step 4).
 - [ ] **Subtitle styling is not user-configurable** (design §5.3).

@@ -52,6 +52,7 @@
     #msg.ok { background: rgba(60, 170, 90, 0.16); }
     details { margin-top: 10px; font-size: 12px; }
     details summary { cursor: pointer; opacity: 0.7; }
+    details button { margin-top: 6px; }
     label { display: block; margin-top: 6px; opacity: 0.7; }
     .note { margin-top: 4px; font-size: 11px; opacity: 0.6; }
     select, input {
@@ -85,6 +86,10 @@
     <div id="modelNote" class="note"></div>
     <label for="host">Ollama host</label>
     <input id="host" placeholder="http://localhost:11434" />
+
+    <label>Cached translations</label>
+    <div id="cacheNote" class="note">…</div>
+    <button id="clearCache" class="secondary">Clear cache</button>
   </details>
 
   <script src="popup.js"></script>
