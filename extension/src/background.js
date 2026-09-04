@@ -34,6 +34,15 @@ const runs = new Map();
 // the cache would simply start failing writes after ~20 long videos.
 
 const CACHE_PREFIX = "cache:";
+
+/**
+ * Bump whenever segmentation or timing changes shape. A cache entry stores the
+ * timings it was built with, so without this an old entry keeps serving them
+ * forever and an algorithm fix silently never reaches videos already watched.
+ *
+ * 2 — sentence splits anchored to YouTube's word-level timings.
+ */
+const PIPELINE_VERSION = 2;
 const CACHE_INDEX = "cacheIndex";
 const CACHE_BUDGET_BYTES = 7 * 1024 * 1024; // headroom under the 10 MB quota
 
@@ -50,6 +59,16 @@ async function cacheGet(videoId) {
   const key = CACHE_PREFIX + videoId;
   const entry = (await chrome.storage.local.get(key))[key];
   if (!entry) return null;
+
+  // Built by an older pipeline: drop it rather than serve stale timings.
+  if ((entry.pipeline || 1) !== PIPELINE_VERSION) {
+    console.debug(`[jpsub] cache entry for ${videoId} is stale (v${entry.pipeline || 1}); discarding`);
+    const index = await readIndex();
+    delete index[videoId];
+    await chrome.storage.local.remove(key);
+    await writeIndex(index);
+    return null;
+  }
 
   // Touch it so eviction sees recent use, not just recent writes.
   const index = await readIndex();
@@ -116,6 +135,49 @@ async function cacheClear() {
   const index = await readIndex();
   const keys = Object.keys(index).map((v) => CACHE_PREFIX + v);
   await chrome.storage.local.remove([...keys, CACHE_INDEX]);
+}
+
+// --------------------------------------------------------- channel glossary
+//
+// Names and recurring vocabulary are properties of a channel, not of a single
+// video, so they are accumulated per channel and fed into pass 1 of the next
+// video from the same one. This is what stops a streamer being romanised
+// differently every time, and it compounds with the cache: channels repeat.
+
+const CHANNEL_PREFIX = "chan:";
+const CHANNEL_MAX_ENTRIES = 40;   // per category; keeps the prompt small
+
+async function channelGlossary(channelId) {
+  if (!channelId) return null;
+  const key = CHANNEL_PREFIX + channelId;
+  return (await chrome.storage.local.get(key))[key] || null;
+}
+
+/** Merge this video's findings into the channel's running glossary. */
+async function rememberChannelGlossary(channelId, glossary, author) {
+  if (!channelId || !glossary) return;
+  const key = CHANNEL_PREFIX + channelId;
+  const prev = (await chrome.storage.local.get(key))[key] || { names: {}, terms: {} };
+
+  // Existing entries win: a spelling already used in earlier subtitles should
+  // not drift because one video's analysis phrased it differently.
+  const merge = (base, add) => {
+    const out = { ...(add || {}), ...(base || {}) };
+    return Object.fromEntries(Object.entries(out).slice(0, CHANNEL_MAX_ENTRIES));
+  };
+
+  const next = {
+    author: author || prev.author || null,
+    names: merge(prev.names, glossary.names),
+    terms: merge(prev.terms, glossary.terms),
+    videos: (prev.videos || 0) + 1,
+    at: Date.now(),
+  };
+  try {
+    await chrome.storage.local.set({ [key]: next });
+  } catch (err) {
+    console.warn("[jpsub] could not save channel glossary:", err?.message || err);
+  }
 }
 
 function setState(tabId, patch) {
@@ -198,7 +260,12 @@ async function translateTab(tabId, { force = false } = {}) {
   });
 
   const log = (m) => setState(tabId, { message: m });
-  const glossary = await analyse(units, backend, transcript, log);
+  const seed = await channelGlossary(transcript.channel_id);
+  if (seed) {
+    log(`carrying ${Object.keys(seed.names || {}).length} names forward from ${seed.author || "this channel"}`);
+  }
+  const glossary = await analyse(units, backend, transcript, log, seed);
+  await rememberChannelGlossary(transcript.channel_id, glossary, transcript.author);
 
   setState(tabId, { phase: "translating" });
   const startedAt = Date.now();
@@ -244,6 +311,7 @@ async function translateTab(tabId, { force = false } = {}) {
     video_id: transcript.video_id,
     title: transcript.title,
     model: config.model,
+    pipeline: PIPELINE_VERSION,
     at: Date.now(),
     units: overlayUnits,
   });
@@ -280,6 +348,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg?.type === "cache:clear") {
     cacheClear().then(() => sendResponse({ ok: true }));
+    return true; // async
+  }
+
+  if (msg?.type === "channel:info") {
+    channelGlossary(msg.channelId)
+      .then((g) => sendResponse({ ok: true, data: g && {
+        author: g.author, videos: g.videos,
+        names: Object.keys(g.names || {}).length,
+        terms: Object.keys(g.terms || {}).length,
+      } }))
+      .catch(() => sendResponse({ ok: true, data: null }));
     return true; // async
   }
 

@@ -11,14 +11,25 @@
  * errors: 高感度イベント is a homophone of 好感度イベント and only one is
  * meaningful in a farming sim — but you have to know it is a farming sim.
  */
-export function analysisPrompt(fullJapaneseText, meta = {}) {
+export function analysisPrompt(fullJapaneseText, meta = {}, seed = null) {
   const title = meta.title ? `Video title: ${meta.title}\n` : "";
+  const author = meta.author ? `Channel: ${meta.author}\n` : "";
+
+  // Names and recurring terms belong to a channel, not to one video. Carrying
+  // them across videos is what stops the same streamer being rendered a
+  // different way every time.
+  const seeded =
+    seed && (Object.keys(seed.names || {}).length || Object.keys(seed.terms || {}).length)
+      ? `\nALREADY ESTABLISHED FOR THIS CHANNEL. Reuse these spellings exactly, and add to them:\n` +
+        JSON.stringify({ names: seed.names || {}, terms: seed.terms || {} }, null, 2) +
+        `\n`
+      : "";
 
   return `You are preparing to translate a Japanese video transcript into English subtitles.
-
+${seeded}
 Before translating, read the whole transcript and build a reference sheet.
 
-${title}
+${title}${author}
 TRANSCRIPT
 ${fullJapaneseText}
 

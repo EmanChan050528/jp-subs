@@ -56,10 +56,26 @@ is disabled — a second run on the same video buys nothing and costs minutes of
 local inference. **Re-translate** appears alongside it as the escape hatch. The
 state is per-video, so navigating to a different video re-arms the button.
 
+### Per-channel glossary
+
+Names and recurring vocabulary belong to a channel, not to one video, so they
+accumulate under the channel id and seed pass 1 of the next video from the same
+channel. Established spellings win over a fresh analysis, so a streamer does not
+get romanised differently from one video to the next. Capped at 40 entries per
+category to keep the prompt small.
+
+This compounds with the cache: channels repeat, so the glossary gets better the
+more of a channel you watch.
+
 ### Caching
 
 A finished translation is stored under its video id, so re-opening a video is
 instant and costs nothing. **Re-translate** bypasses the cache.
+
+Entries record the pipeline version they were built with. A change to
+segmentation or timing bumps that version and stale entries are discarded on
+read — otherwise a fix would never reach videos already watched, because the
+cache stores the timings it was made with.
 
 It is deliberately bounded, not permanent. `chrome.storage.local` is capped at
 10 MB and a 4-hour VOD is roughly half a megabyte of units, so an unbounded

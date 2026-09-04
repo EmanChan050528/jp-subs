@@ -241,6 +241,8 @@
         onWatchPage: !!new URLSearchParams(location.search).get("v"),
         videoId: videoId(),
         title: pr?.videoDetails?.title || null,
+        channelId: pr?.videoDetails?.channelId || null,
+        author: pr?.videoDetails?.author || null,
         durationSeconds: Number(pr?.videoDetails?.lengthSeconds) || null,
         playerReady: typeof player()?.loadModule === "function",
         tracks: captionTracks().map((t) => ({
@@ -274,6 +276,8 @@
       return {
         video_id: videoId(),
         title: pr?.videoDetails?.title || null,
+        channel_id: pr?.videoDetails?.channelId || null,
+        author: pr?.videoDetails?.author || null,
         duration_s: duration,
         source: `youtube caption track (kind=${track.kind || "manual"}, lang=ja)`,
         captured_at: new Date().toISOString(),

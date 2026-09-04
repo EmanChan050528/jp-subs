@@ -34,7 +34,7 @@ function analysisText(units, budget = MAX_ANALYSIS_CHARS) {
 }
 
 /** Pass 1: whole-transcript glossary and speaker model. */
-export async function analyse(units, backend, meta = {}, log = () => {}) {
+export async function analyse(units, backend, meta = {}, log = () => {}, seed = null) {
   const { text, sampled, keptUnits } = analysisText(units);
   log(
     `pass 1: analysing ${units.length} units (${text.length} chars` +
@@ -50,7 +50,7 @@ export async function analyse(units, backend, meta = {}, log = () => {}) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       glossary = parseJson(
-        await backend(analysisPrompt(text, meta), { json: true }),
+        await backend(analysisPrompt(text, meta, seed), { json: true }),
         "analysis pass"
       );
       if (useful(glossary)) break;
