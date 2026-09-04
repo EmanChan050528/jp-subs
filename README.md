@@ -155,12 +155,16 @@ fix one:
 ```
 
 One entry per line, `japanese = english`. Delete a line to remove the entry.
+Glossaries are kept permanently and are **not** affected by clearing the cache.
 Changes apply to the next translation on that channel — press **Re-translate**
 to redo the current video with them.
 
 ---
 
 ## Other buttons
+
+**Hide subtitles** — turns the overlay off without losing the translation.
+Toggling back on is instant. The setting sticks until you turn it back.
 
 **Stop translating** — appears while a run is going. Stops within a few
 seconds; whatever was already translated stays on screen.

@@ -54,6 +54,11 @@ Model choice is the only real speed lever. Measured on a 78-unit fixture with
 is generating output tokens, which chunking does not change. Pass 2 is ~80% of
 the total.
 
+**Hide subtitles / Show subtitles** turns the overlay off without discarding
+anything — the translation stays loaded and toggling back needs no re-run. The
+preference is stored, so it survives a page reload rather than quietly coming
+back. If the page was reloaded while hidden, showing them re-applies from cache.
+
 **Stop translating** appears while a run is in progress. It takes effect at the
 next chunk boundary — a few seconds — rather than instantly, because a request
 already in flight is left to finish. Subtitles delivered so far stay on screen,
@@ -109,6 +114,17 @@ recurring on every video. Saving writes the lists wholesale, so deleting a line
 deletes the entry. Changes apply to the next translation on that channel; use
 **Re-translate** to redo the current video with them.
 
+### The popup reads durable state, not run state
+
+Whether a video is already translated is asked of the **cache**, not of the
+worker's in-memory run map. That map is wiped whenever the MV3 worker is killed
+after ~30 s idle, so reopening the popup after a pause used to report nothing
+and leave **Subtitles applied** and **Re-translate** hidden on a video that was
+plainly done.
+
+`refreshRunState()` also no longer bails when the worker has forgotten
+everything; it paints from the durable facts instead.
+
 ### Caching
 
 A finished translation is stored under its video id, so re-opening a video is
@@ -127,6 +143,12 @@ it, so videos you actually revisit survive and stale ones fall out. Settings
 shows current usage and a **Clear cache** button.
 
 Rough capacity: ~14 four-hour VODs, or a couple of hundred anime episodes.
+
+**Channel glossaries are not part of the cache.** They live under separate
+keys, so clearing the cache or evicting a video leaves them untouched — a
+hand-edited spelling is not lost because a video aged out. The number of
+channels is capped at 200, evicting least-recently-used ones, but glossaries
+edited by hand are never evicted.
 
 **You can tab away while it runs.** The pipeline lives in the service worker,
 which is not tied to tab visibility or focus. Closing the popup is fine;

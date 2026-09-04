@@ -6,20 +6,46 @@ const againButton = $("again");
 const stopButton = $("stop");
 const saveButton = $("save");
 const srtButton = $("srt");
+const visButton = $("visToggle");
+
+/**
+ * Every async button does the same three things: say it is working, do it, put
+ * itself back. Without this a click on a slow action looks like nothing
+ * happened.
+ */
+async function withFeedback(button, busyLabel, fn) {
+  const label = button.textContent;
+  const wasDisabled = button.disabled;
+  button.disabled = true;
+  button.classList.add("busy");
+  if (busyLabel) button.textContent = busyLabel;
+  try {
+    return await fn();
+  } finally {
+    button.classList.remove("busy");
+    button.textContent = label;
+    button.disabled = wasDisabled;
+  }
+}
+
 const bar = $("bar");
 
 let tabId = null;
 let poll = null;
 let currentVideoId = null;
+let cachedHere = null;      // cache entry meta for the video on screen
+let subsHidden = false;
 const GO_LABEL = "Translate & show subtitles";
 
 /**
- * A finished run only counts for the video it ran on. This is keyed on the
- * current videoId because the run state lives in the worker and outlives a
- * navigation — without the check the button would stay disabled after moving
- * to a different video.
+ * Whether this video already has a translation.
+ *
+ * Asked of the cache, not of the worker's run map: `runs` is in-memory and the
+ * MV3 worker is killed after ~30 s idle, so reopening the popup after a pause
+ * reported nothing and left the buttons in their default state.
  */
 function isDoneForThisVideo(state) {
+  if (cachedHere) return true;
   return !!state
     && state.phase === "done"
     && !!currentVideoId
@@ -172,18 +198,19 @@ async function loadGlossary() {
   $("glossaryBox").hidden = false;
 }
 
-$("saveGlossary").addEventListener("click", async () => {
-  const res = await chrome.runtime.sendMessage({
-    type: "channel:save",
-    channelId: currentChannel?.id,
-    author: currentChannel?.author,
-    names: parseGlossary($("gNames").value),
-    terms: parseGlossary($("gTerms").value),
-  });
-  $("glossaryNote").textContent = res?.ok
-    ? "Saved. Applies to the next translation on this channel — use Re-translate to redo this video."
-    : res?.error || "Could not save.";
-});
+$("saveGlossary").addEventListener("click", () =>
+  withFeedback($("saveGlossary"), "Saving…", async () => {
+    const res = await chrome.runtime.sendMessage({
+      type: "channel:save",
+      channelId: currentChannel?.id,
+      author: currentChannel?.author,
+      names: parseGlossary($("gNames").value),
+      terms: parseGlossary($("gTerms").value),
+    });
+    $("glossaryNote").textContent = res?.ok
+      ? "Saved. Kept permanently, and not affected by clearing the cache. Applies to the next translation on this channel — use Re-translate to redo this one."
+      : res?.error || "Could not save.";
+  }));
 
 async function refreshCache() {
   const res = await chrome.runtime.sendMessage({ type: "cache:stats" });
@@ -196,10 +223,14 @@ async function refreshCache() {
     : "empty";
 }
 
-$("clearCache").addEventListener("click", async () => {
-  await chrome.runtime.sendMessage({ type: "cache:clear" });
-  await refreshCache();
-});
+$("clearCache").addEventListener("click", () =>
+  withFeedback($("clearCache"), "Clearing…", async () => {
+    await chrome.runtime.sendMessage({ type: "cache:clear" });
+    await refreshCache();
+    cachedHere = null;
+    await refreshRunState();
+    show("Cache cleared. Channel glossaries are kept.", "ok");
+  }));
 
 $("host").addEventListener("change", async (e) => {
   const value = e.target.value.trim();
@@ -217,8 +248,7 @@ function stopPolling() {
 
 async function refreshRunState() {
   const res = await chrome.runtime.sendMessage({ type: "run:status", tabId });
-  const state = res?.data;
-  if (!state) return;
+  const state = res?.data || {};   // the worker may have been restarted
 
   if (state.running) {
     goButton.disabled = true;
@@ -247,8 +277,10 @@ async function refreshRunState() {
   stopButton.hidden = true;
 
   // Offered whenever a translation exists for this video, however it got here
-  // — a fresh run or a cache hit.
-  srtButton.hidden = !isDoneForThisVideo(state);
+  // — a fresh run, a cache hit, or a worker that has since been restarted.
+  const done = isDoneForThisVideo(state);
+  srtButton.hidden = !done;
+  visButton.hidden = !done;
 
   if (isDoneForThisVideo(state)) {
     // Nothing is gained by running it again on the same video, and a second
@@ -314,6 +346,15 @@ async function init() {
 
   currentVideoId = d.videoId || null;
   currentChannel = d.channelId ? { id: d.channelId, author: d.author } : null;
+
+  // Read the durable facts before painting any button, so the popup looks the
+  // same on the tenth open as on the first.
+  const [cacheRes, prefs] = await Promise.all([
+    chrome.runtime.sendMessage({ type: "cache:has", videoId: currentVideoId }),
+    chrome.storage.local.get("subtitlesHidden"),
+  ]);
+  cachedHere = cacheRes?.ok ? cacheRes.data : null;
+  subsHidden = !!prefs.subtitlesHidden;
   $("title").textContent = d.title || d.videoId || "";
   loadGlossary();
 
@@ -331,11 +372,37 @@ async function init() {
     show("No Japanese caption track on this video.", "err");
   }
 
+  if (cachedHere) {
+    rows.push(["Subtitles", `cached, ${cachedHere.lines} lines`]);
+  }
   if (!d.playerReady) rows.push(["Player", "still loading", "warn"]);
   facts(rows);
 
+  visButton.hidden = !cachedHere;
+  paintVisButton();
+
   await refreshRunState();
 }
+
+function paintVisButton() {
+  visButton.textContent = subsHidden ? "Show subtitles" : "Hide subtitles";
+}
+
+visButton.addEventListener("click", async () => {
+  await withFeedback(visButton, null, async () => {
+    subsHidden = !subsHidden;
+    await chrome.storage.local.set({ subtitlesHidden: subsHidden });
+    // If they were hidden and nothing is loaded on the page (a reload, or the
+    // worker restarted), re-apply from cache rather than showing nothing.
+    if (!subsHidden && cachedHere) {
+      await chrome.runtime.sendMessage({ type: "subs:apply", tabId, videoId: currentVideoId });
+    }
+    await chrome.tabs.sendMessage(tabId, { type: "overlay:visible", visible: !subsHidden })
+      .catch(() => {});
+  });
+  paintVisButton();
+  show(subsHidden ? "Subtitles hidden." : "Subtitles showing.", "ok");
+});
 
 srtButton.addEventListener("click", async () => {
   srtButton.disabled = true;
@@ -403,13 +470,13 @@ againButton.addEventListener("click", async () => {
   await startRun({ force: true });
 });
 
-saveButton.addEventListener("click", async () => {
-  saveButton.disabled = true;
-  show("Extracting…", "ok");
-  const res = await toTab("extract:save");
-  if (!res.ok) show(res.error, "err");
-  else show(`Saved ${res.data.filename}\n${res.data.cue_count} cues`, "ok");
-  saveButton.disabled = false;
-});
+saveButton.addEventListener("click", () =>
+  withFeedback(saveButton, "Extracting…", async () => {
+    const res = await toTab("extract:save");
+    show(
+      res.ok ? `Saved ${res.data.filename}\n${res.data.cue_count} cues` : res.error,
+      res.ok ? "ok" : "err"
+    );
+  }));
 
 init();

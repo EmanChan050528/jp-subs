@@ -75,6 +75,12 @@
 
   const overlay = new globalThis.JPSubOverlay();
 
+  // Visibility is a stored preference, not per-run state: turning subtitles off
+  // should survive a page reload rather than quietly coming back.
+  chrome.storage.local.get("subtitlesHidden").then((s) => {
+    overlay.setVisible(!s.subtitlesHidden);
+  }).catch(() => {});
+
   /** Which video this page is currently showing. */
   const currentVideoId = () => new URLSearchParams(location.search).get("v");
 
@@ -136,6 +142,12 @@
     if (msg?.type === "overlay:status") {
       if (!forThisVideo(msg)) { sendResponse({ ok: true, dropped: true }); return false; }
       withOverlay(() => overlay.setStatus(msg.text));
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    if (msg?.type === "overlay:visible") {
+      overlay.setVisible(!!msg.visible);
       sendResponse({ ok: true });
       return false;
     }

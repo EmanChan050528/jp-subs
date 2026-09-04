@@ -137,6 +137,9 @@ class Overlay {
     this.timer = null;
     this.lastIndex = -1;
     this.status = "";
+    // Hiding keeps the translation loaded; only the drawing stops. Toggling
+    // back on must not need a re-run.
+    this.hidden = false;
   }
 
   // ------------------------------------------------------------------ mount
@@ -234,6 +237,12 @@ class Overlay {
     this.start();
   }
 
+  setVisible(visible) {
+    this.hidden = !visible;
+    if (this.hidden && this.box) this.box.textContent = "";
+    else this.render();
+  }
+
   setStatus(text) {
     this.status = text || "";
     if (this.statusBox) this.statusBox.textContent = this.status;
@@ -263,6 +272,10 @@ class Overlay {
 
   render = () => {
     if (!this.box || !this.video || !this.units.length) return;
+    if (this.hidden) {
+      if (this.box.textContent) this.box.textContent = "";
+      return;
+    }
 
     // Ads play in the same <video> element; showing a cue then would put the
     // wrong text on unrelated footage.

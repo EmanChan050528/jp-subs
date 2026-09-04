@@ -154,6 +154,21 @@ async function channelGlossary(channelId) {
   return (await chrome.storage.local.get(key))[key] || null;
 }
 
+/** Channels remembered. Each glossary is small, but the count was unbounded. */
+const CHANNEL_MAX_CHANNELS = 200;
+
+async function pruneChannels() {
+  const all = await chrome.storage.local.get(null);
+  const keys = Object.keys(all).filter((k) => k.startsWith(CHANNEL_PREFIX));
+  if (keys.length <= CHANNEL_MAX_CHANNELS) return;
+  // Hand-edited glossaries are kept regardless: they cost a person's effort.
+  const droppable = keys
+    .filter((k) => !all[k]?.editedByHand)
+    .sort((a, b) => (all[a]?.at || 0) - (all[b]?.at || 0));
+  const drop = droppable.slice(0, keys.length - CHANNEL_MAX_CHANNELS);
+  if (drop.length) await chrome.storage.local.remove(drop);
+}
+
 /** Merge this video's findings into the channel's running glossary. */
 async function rememberChannelGlossary(channelId, glossary, author) {
   if (!channelId || !glossary) return;
@@ -176,6 +191,7 @@ async function rememberChannelGlossary(channelId, glossary, author) {
   };
   try {
     await chrome.storage.local.set({ [key]: next });
+    await pruneChannels();
   } catch (err) {
     console.warn("[jpsub] could not save channel glossary:", err?.message || err);
   }
@@ -359,6 +375,32 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await send(tabId, { type: "overlay:status", text: `Failed: ${err.message}` });
         sendResponse({ ok: false, error: err.message });
       });
+    return true; // async
+  }
+
+  if (msg?.type === "cache:has") {
+    // The popup asks this instead of trusting run state: `runs` is an
+    // in-memory Map and the MV3 worker is killed after ~30 s idle, so after a
+    // short pause it reports nothing for a video that is plainly translated.
+    cacheGet(msg.videoId)
+      .then((e) => sendResponse({ ok: true, data: e && {
+        lines: e.units.length, model: e.model, title: e.title, at: e.at,
+      } }))
+      .catch(() => sendResponse({ ok: true, data: null }));
+    return true; // async
+  }
+
+  if (msg?.type === "subs:apply") {
+    // Re-show a cached translation without re-running anything — after a page
+    // reload, or after the subtitles were hidden.
+    const tabId = msg.tabId ?? sender.tab?.id;
+    cacheGet(msg.videoId)
+      .then(async (e) => {
+        if (!e) return sendResponse({ ok: false, error: "Nothing cached for this video." });
+        await send(tabId, { type: "overlay:units", videoId: msg.videoId, units: e.units, status: "" });
+        sendResponse({ ok: true, data: { lines: e.units.length } });
+      })
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true; // async
   }
 
