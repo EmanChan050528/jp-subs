@@ -179,8 +179,6 @@ re-translation — the change is applied to the cached text and the overlay
 refreshes. Adding a *new* entry cannot work that way (there is no old wording to
 replace), so that one takes effect on the next translation; press
 **Re-translate** to apply it to the video you are on.
-Changes apply to the next translation on that channel — press **Re-translate**
-to redo the current video with them.
 
 ---
 
