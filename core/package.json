@@ -1,15 +1,19 @@
 {
   "name": "jpsub-core",
-  "version": "0.1.0",
+  "version": "1.6.0",
   "private": true,
   "type": "module",
   "description": "Build step 2: Japanese transcript in, English subtitles out. Backend-agnostic.",
-  "bin": { "jpsub": "./bin/jpsub.js" },
+  "bin": {
+    "jpsub": "./bin/jpsub.js"
+  },
   "scripts": {
     "segment": "node bin/jpsub.js segment",
     "translate": "node bin/jpsub.js translate"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {},
   "optionalDependencies": {
     "@google/genai": "^1.0.0"

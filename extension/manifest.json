@@ -2,9 +2,14 @@
   "manifest_version": 3,
   "name": "JP Subs — Japanese to English subtitles",
   "description": "Translates a YouTube video's Japanese captions into English subtitles using a local model, and renders them over the player.",
-  "version": "0.2.0",
-  "permissions": ["activeTab", "storage"],
-  "host_permissions": ["http://localhost:11434/*"],
+  "version": "1.6.0",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:11434/*"
+  ],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"
@@ -15,15 +20,24 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*"],
-      "js": ["src/interceptor.js"],
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "src/interceptor.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": false
     },
     {
-      "matches": ["https://www.youtube.com/*"],
-      "js": ["src/overlay.js", "src/content.js"],
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "src/overlay.js",
+        "src/content.js"
+      ],
       "run_at": "document_start",
       "world": "ISOLATED",
       "all_frames": false
