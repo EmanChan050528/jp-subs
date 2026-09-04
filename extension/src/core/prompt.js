@@ -80,7 +80,7 @@ Rules:
 5. Apply the ASR corrections from the reference sheet where the misrecognised form appears.
 6. Match the register on the reference sheet. Keep it natural spoken English, not literal glosses.
 7. Never invent content that is not in the source. If a line is genuinely unclear, translate the part you are sure of.
-8. Subtitles are read at speed. Prefer short and clear.
+8. Subtitles are read at speed and get two lines on screen. Keep each translation close to the length of its Japanese source and never longer than about 100 characters. Do not explain, expand, add background, or spell out what is merely implied — a line that needs a footnote should still be translated as the line, not the footnote.
 9. Translate ONLY the numbered lines. The context sections are for understanding; never fold their content into an answer.
 10. Output plain sentences. No leading or trailing ellipses, no surrounding quotation marks, no speaker labels.
 

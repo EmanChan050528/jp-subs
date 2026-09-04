@@ -6,7 +6,11 @@
 // display lines rather than being allowed to run off the screen.
 
 const MAX_LINE_CHARS = 42;
-const MAX_LINES = 2;
+// Two lines is the subtitle convention, but ~6% of translations exceed what
+// two lines can hold (Japanese expands 2-4x into English). Jamming the
+// remainder onto line two produced an unreadable run-on, so allow a third
+// line rather than mangling it. The real fix is shorter source units.
+const MAX_LINES = 3;
 
 function timestamp(ms) {
   const clamped = Math.max(0, Math.round(ms));

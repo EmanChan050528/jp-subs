@@ -184,6 +184,56 @@ predicted, and it runs locally at 24x real time for free. Pro-drop and the
 dropped-line reliability issue are the two things worth working on next; neither
 is a reason to switch to Gemini yet.
 
+## Multi-hour VOD, end to end — 2026-09-04
+
+The 7h53m archive (`EmteTL5Ij8g`) run in full through the CLI on `qwen3.5:9b`.
+First time the pipeline has seen a video at this scale.
+
+| | |
+|---|---|
+| Cues | 5,729 |
+| Units after segmentation | 5,039 |
+| Chunks | 252 |
+| **Translated** | **5,038 / 5,039** |
+| Wall clock | **1,011 s (16m 51s)** |
+| Coverage | last unit at 28,376 s of 28,382 s — 100% |
+| Output | 0.36 MB `.srt`, 0.87 MB `.en.json` |
+| Cache entry size | **417 KB** |
+
+Everything built for scale did its job:
+
+- **Pass-1 sampling engaged**, reducing 5,039 units to 388 (5,943 chars), and
+  still produced a usable glossary — 10 names, 11 terms, 9 ASR corrections.
+  Without it the analysis prompt would have been ~75,000 characters.
+- **Retries fired 17 times** across 252 chunks and recovered all but one line.
+  Final completion 99.98%.
+- **17 minutes matches the ETA estimate** of ~15 minutes given earlier.
+- **417 KB per entry** confirms the cache sizing: the 7 MB budget holds roughly
+  17 videos of this length.
+
+Not covered by this run: the MV3 service-worker lifetime, which is the actual
+risk on long videos and only appears when driving the extension rather than
+the CLI.
+
+### Defect found: over-long subtitles
+
+**5.9% of subtitles exceed 84 characters** — more than two 42-character lines
+can hold. Worst case is a 293-character English line from a 61-character
+Japanese unit, a 4.8x expansion, where the model explained rather than
+translated.
+
+Tightening the prompt (an explicit length rule instead of "prefer short and
+clear") did **not** measurably help: 21.3% -> 19.2% over 84 chars on the small
+fixture, which is inside the noise for 78 units. Recording that as a negative
+result rather than a fix.
+
+The cause is structural: segmentation allows 64-character Japanese units, and
+Japanese expands 2-4x into English, so a full-width unit legitimately lands
+around 150 characters. The real levers are a smaller `maxChars` in
+segmentation (at the cost of more chunks and more fragmented translation) or
+accepting three-line subtitles. For now `srt.js` allows a third line rather
+than jamming the remainder onto line two, which produced an unreadable run-on.
+
 ## Status
 
 - [x] Japanese source captured
