@@ -1,12 +1,16 @@
 # Japanese → English Subtitles for YouTube VOD
 
-A browser extension that takes a YouTube video, obtains a Japanese transcript, translates it with the Claude API, and renders English subtitles over the player.
+A browser extension that takes a YouTube video, obtains a Japanese transcript, translates it with a **local model through Ollama**, and renders English subtitles over the player.
+
+> **Status: built and in use.** All four build steps are complete. This document is now a record of the design and the reasoning behind it, updated to match what was actually built and measured. Where a prediction turned out wrong, the correction is kept alongside it rather than quietly replaced — the wrong predictions are the useful part.
+>
+> Setup and usage live in [README.md](README.md). Component detail is in [extension/README.md](extension/README.md), [core/README.md](core/README.md) and [eval/README.md](eval/README.md).
 
 **Scope:** YouTube VOD, and nothing else. Not live streams (the real-time pipeline is preserved in [Appendix A](#appendix-a--deferred-live-stream-pipeline) rather than kept in the design), not other video sites, not local files, not microphone input. Build directly against YouTube — do not add abstraction layers for sources that are not in scope.
 
-**Key constraint:** the Claude API does not accept audio input. In practice this barely matters — YouTube auto-generates a Japanese caption track for nearly all target content (§1.4), so the input is already text. ASR is a fallback for the minority of videos with no track.
+**Key constraint:** an LLM does not accept audio input. In practice this barely matters — YouTube auto-generates a Japanese caption track for nearly all target content (§1.4), so the input is already text. ASR remains the unbuilt fallback for the minority of videos with no track.
 
-**What VOD buys us.** No latency budget, no VAD, no streaming ASR, no speculative translation, no backpressure. In exchange we get the whole transcript up front — which is the single largest quality win available for Japanese (see §3.2), and cuts cost by roughly 4× (see §0.4).
+**What VOD buys us.** No latency budget, no VAD, no streaming ASR, no speculative translation, no backpressure. In exchange we get the whole transcript up front — which proved to be the single largest quality win available for Japanese (§3.2), and which made a local model viable at all.
 
 ---
 
@@ -28,63 +32,43 @@ Because everything runs offline relative to playback, the MV3 service-worker lif
 
 #### YouTube host-page constraints
 
-- [ ] **Anchor the overlay to the player**, not the page — it gets theatre mode and fullscreen for free
-- [ ] **Handle seeking.** The user can jump anywhere in the video at any time; the renderer must resolve a cue for an arbitrary timestamp instantly, which means the translation should be stored as a complete timed list, not a stream.
-- [ ] Ads interrupt playback but not our data — the overlay must hide during ad playback rather than showing a cue at the wrong time
-- [ ] **Overlay isolation.** Inject into a shadow DOM so host-page CSS and CSP cannot break the subtitles.
-- [ ] **API key handling.** An API key shipped inside an extension is public. Either proxy through a relay backend, or require users to supply their own key. Decide before Stage 3.
+- [x] **Anchor the overlay to the player**, not the page — theatre mode and fullscreen come free
+- [x] **Handle seeking.** Stored as a complete timed list; the active cue is found by binary search over `video.currentTime`, so a seek resolves instantly
+- [x] Ads hidden — the overlay blanks while the player carries `ad-showing`
+- [x] **Overlay isolation** — a shadow root attached to the player element
+- [x] ~~**API key handling.**~~ Moot: the model runs locally, so there is no key to ship. Ollama's `OLLAMA_ORIGINS` had to be opened to `chrome-extension://*` instead — it answers 403 to unknown origins with no useful message.
+
+One prediction here was wrong. The doc said the MV3 service-worker lifetime problem "mostly disappears" because work is request-shaped. It does not: a translation is a single unbroken chain of fetches lasting up to 17 minutes. It has held in practice, but it is the least-tested assumption in the project.
 
 ### 0.3 Timing targets
 
-Latency is no longer a per-utterance figure. Two targets replace it:
+**All targets met, and the design they implied was not needed.**
 
-| Target | Value |
-|---|---|
-| Time to first subtitle (user presses play → subtitles start) | ≤ 15 s |
-| Translation stays ahead of the playhead by | ≥ 60 s |
-| Full 24-minute episode translated | ≤ 90 s |
+| Target | Predicted | Measured (`qwen3.5:9b`, RTX 5070) |
+|---|---|---|
+| Full 24-minute episode | ≤ 90 s | ~51 s |
+| 7h53m archive | — | 1,011 s (16m 51s) |
+| Throughput | faster than real time | **28× real time** |
 
-The design that satisfies these is **translate-ahead-of-playhead**: translate the first couple of minutes, start rendering, and keep working forward faster than real time. Full-video-then-play is simpler but makes the user wait; progressive is barely harder and feels instant.
+- [x] **Progressive, not blocking** — results are pushed after every chunk, so subtitles appear before the whole video is done
+- [x] ~~Ahead-of-playhead scheduling~~ — **dropped, and rightly.** It was designed for a world where translation was slow. At 28× real time the entire video finishes before a viewer reaches the second minute, so scheduling around the playhead would add complexity for no gain. Chunks are simply translated in order.
+- [x] ~~Handle a seek past the translated region~~ — the progress box covers this; there is no meaningful window in which a viewer can outrun the translator.
 
-- [ ] Decide: progressive (translate ahead of playhead) or blocking (translate all, then play). Local Qwen inference speed may settle this for us — measure before choosing.
-- [ ] Handle a seek past the translated region — show a brief "translating…" state rather than nothing
+### 0.4 Cost — resolved by moving off the API entirely
 
-### 0.4 Cost
+**This section used to model Claude API pricing in detail. That analysis is obsolete.**
 
-Costs collapse under VOD for three compounding reasons: the caption track makes ASR free, whole-document processing lets many lines share one request, and the Batch API halves what remains.
+The Claude API turned out to be billed separately from a Claude Pro subscription, which was not budgeted for. Gemini's free tier and a local model were both considered; local Qwen through Ollama was chosen and shipped. See [docs/translation-backends.md](docs/translation-backends.md).
 
-**Now grounded in a real measurement** rather than per-line estimates. The 7h53m archive measured in §1.3 contains 75,088 Japanese characters across 11,457 cues. Estimating ~1 token per Japanese character, ~1.5× input inflation for context overlap, and English output at roughly 4 characters per token:
+**Cost is now zero per video.** No API key, no per-token billing, no cost ceiling to design against. The constraint it was replaced by is *hardware*: translation speed is bounded by local GPU throughput, and model choice is the only meaningful lever on it.
 
-| | Estimated tokens |
-|---|---|
-| Transcript in (with context overlap) | ~115,000 |
-| English out | ~28,000 |
-| Cached-prefix reads (~570 chunk requests × 1,500) | ~855,000 |
+The old analysis is worth one line of retrospect: it concluded "cost has stopped being a design constraint" at ~$0.09 per episode, and that conclusion survived the move — it just became literally true rather than approximately.
 
-| Model | 7h53m VTuber archive | Per hour of video | 24-min anime episode |
-|---|---|---|---|
-| Haiku 4.5 | ~$0.36 | $0.05 | ~$0.02 |
-| Sonnet 5 | ~$0.72 | $0.09 | ~$0.04 |
-| Opus 5 | ~$1.79 | $0.23 | ~$0.09 |
+What *did* carry over from it:
 
-Halve these with the Batch API (see §3.5).
-
-**The earlier estimates were roughly 2× too pessimistic.** They assumed ~25 tokens per subtitle line; the auto-caption cues on that video average **6.6 characters**, because they are scrolling fragments rather than sentences (other videos segment more coarsely — §1.3). Even the worst case — Opus 5 on an eight-hour archive — lands at $1.79, and every model sits inside the ceiling below.
-
-- [ ] These are estimates from a measured character count, not from `count_tokens`. Verify against real `usage` figures in build step 2.
-
-**Cost has stopped being a design constraint.** Under the real-time design, Opus 5 was ruled out at $2–3.33/hour. Here it is $0.23/hour — an anime episode costs about **nine cents** on the most capable model available. Nothing in this design should now be traded away to save tokens; pick the model on quality and stop optimising cost.
-
-Revised targets:
-
-| Target | Value |
-|---|---|
-| Ceiling | $0.25 per hour of video |
-| Target | $0.10 per hour of video |
-
-- [ ] **Proposed default: Opus 5.** At nine cents an episode the earlier reason to prefer Sonnet 5 has evaporated. Keep Sonnet 5 and Haiku 4.5 selectable for long archives and bulk runs. Confirm against real quality data in Stage 7.
-- [ ] Long archives remain the only case where model choice moves real money ($0.36 vs $1.79 for eight hours)
-- [ ] Cache the finished translation per video ID so a re-watch costs nothing (§4.2)
+- [x] **Cache the finished translation per video** so a re-watch costs nothing (§4.2). Still worth it — the cost is now 17 minutes of GPU rather than dollars.
+- [x] **Chunk size is not a lever.** Measured: 20 units/chunk took 14.8 s, 40 units/chunk with narrower context took 14.0 s. The cost is generating output tokens, which chunking does not change.
+- [x] **Model choice is the lever**, so the extension lists the models Ollama has installed and lets the user pick.
 
 ---
 
@@ -153,7 +137,7 @@ Measured on a 7h53m VTuber archive (`EmteTL5Ij8g`, 28,382 s):
 - [ ] Isolate all of this in one module with an explicit health check, so a break is detected and reported rather than surfacing as videos that silently have no subtitles
 - [ ] Watch for the empty-200 case specifically as the health signal
 
-### 1.4 Content profiles
+### 1.6 Content profiles
 
 | | Anime | VTuber archive |
 |---|---|---|
@@ -172,14 +156,15 @@ Measured on a 7h53m VTuber archive (`EmteTL5Ij8g`, 28,382 s):
 ## Stage 2 — Document Preparation
 
 - [ ] Normalise all three tiers into one internal format: a list of `{start, end, text}` cues
-- [ ] **Re-segment into translation units.** Caption cues are timed for reading, not for grammar; on fragment-style videos a Japanese clause routinely spans two cues. Merge into complete sentences before translation and keep a mapping back to the original timings — but detect the case where cues are *already* sentences and leave those alone (§1.3).
+- [x] **Re-segment into translation units.** Built in `segment.js`, and it turned out to be the subtlest part of the project. Working at cue level cannot win, because the two content profiles need opposite treatment: cues are exploded into sentence pieces, then pieces accumulate until sentence-final punctuation, a 2 s silence, or a 64-character cap. One rule, both shapes — 131 cues → 78 units on a fragmented video (merging), 202 → 235 on a sentence-dense one (splitting).
+- [x] **Sentence breaks land on real timestamps.** YouTube's json3 carries word-level timings (`tOffsetMs`) on roughly half of all cues, which the first implementation discarded and replaced with a character-count estimate. Switching to the real timings moved 22 of 78 unit starts, the worst by 4.3 s, and cut out-of-order units on a long video from **172 to 0**.
 - [ ] Restore punctuation and sentence boundaries for Tier 2 input (§1.2)
 - [ ] Chunk into requests: ~20 lines per request with ~10 lines of preceding overlap for context
 - [ ] Decide chunk boundaries on sentence boundaries, never mid-clause
 
 ---
 
-## Stage 3 — Translation with Claude
+## Stage 3 — Translation
 
 ### 3.1 Two-pass design
 
@@ -218,36 +203,36 @@ These remain the top quality risks.
 - [ ] Verify with `usage.cache_read_input_tokens`; if it is zero across chunks, something in the prefix is varying
 - [ ] Continuous chunk requests keep the default 5-minute TTL warm, so the 1.25× write is paid once per video and the 1-hour TTL buys nothing
 
-### 3.5 Whole-transcript single pass
+### 3.5 Whole-transcript single pass — not available locally
 
-Gemini's context window fits the entire 7h53m transcript (~75,000 Japanese characters) in one request. That would collapse ~570 chunked requests into one, which also suits a free-tier per-day request cap.
+Written for Gemini, whose context window fits a whole 7h53m transcript in one request. Not reachable on local Qwen at this hardware: the KV cache for a full 256K context will not fit in 12 GB of VRAM, so the local path stays chunked.
 
-- [ ] Test whole-transcript against chunked-with-overlap on the eval fixtures
-- [ ] Not available on local Qwen at this hardware — the KV cache for a full 256K context will not fit in 12 GB VRAM, so the local path stays chunked
+The related problem *is* solved, though. Pass 1 needs to see the whole video, and a 75,000-character transcript fits no local context — so it samples units evenly across the video rather than taking a prefix. On the 8-hour archive that reduced 5,039 units to 388 and still produced a usable glossary.
 
-### 3.6 Batch API
+### 3.6 ~~Batch API~~ — moot
 
-Chunk translation is embarrassingly parallel and not latency-critical for the blocking design — a natural fit for the Batch API at 50% cost.
-
-- [ ] Incompatible with translate-ahead-of-playhead (§0.3), which needs results promptly
-- [ ] Likely both: synchronous for "translate this now", batch for "queue this for later" or bulk pre-translation of a series
-- [ ] Decide after §0.3 is settled
+Written when the backend was a paid API, where batching halved the bill. A local model has no batch tier and no per-token cost, so there is nothing to trade latency for. Dropped.
 
 ---
 
 ## Stage 4 — Pipelining and Storage
 
-### 4.1 Ahead-of-playhead scheduling
-- [ ] Translate forward from the playhead, prioritising the next chunk the viewer will reach
-- [ ] Re-prioritise on seek
-- [ ] Cancel or deprioritise work the viewer has skipped past
-- [ ] Show progress honestly — a stalled pipeline must not look like a silent passage
+### 4.1 Ahead-of-playhead scheduling — not built, deliberately
+
+Superseded by measurement (§0.3). At 28× real time the whole video is translated before a viewer reaches the second minute, so prioritising around the playhead solves a problem that does not occur. Chunks are translated in order and pushed as they finish.
+
+What was kept from the idea:
+
+- [x] **Progressive delivery** — partial results reach the overlay after every chunk
+- [x] **Cancel work the viewer has abandoned** — navigating the tab to another video stops the run at the next chunk boundary. Not for efficiency: without it the old run kept painting its subtitles onto the new video and kept the tab marked busy.
+- [x] **Show progress honestly** — a progress box on the video and in the popup, with a remaining-time estimate
 
 ### 4.2 Result caching
-- [ ] Store completed translations keyed by video ID (and caption-track version) so a re-watch is free
-- [ ] Decide where: local browser storage only, or a shared backend
-- [ ] A shared backend makes repeat views free across users but turns this into a service with hosting, and raises questions about redistributing translations of third-party content — a product decision, not a technical one
-- [ ] Allow export to `.srt`
+- [x] **Stored per video id**, so a re-watch is instant and free
+- [x] **Local browser storage only.** A shared backend would make repeat views free across users, but turns a personal tool into a service with hosting and raises questions about redistributing translations of third-party content. Out of scope by choice.
+- [x] **Bounded, not permanent.** `chrome.storage.local` caps at 10 MB and a 4-hour VOD is ~417 KB of units, so an unbounded cache would start failing writes after about twenty. 7 MB budget, LRU eviction, usage shown in the popup.
+- [x] **Versioned.** Entries record the pipeline version that made them; a segmentation or timing change discards stale ones. Without this a fix could never reach a video already watched, because the cache stores the timings it was made with.
+- [ ] Export to `.srt` from the extension — the CLI does it, the extension does not
 
 ---
 
@@ -277,7 +262,7 @@ Chunk translation is embarrassingly parallel and not latency-critical for the bl
 - [ ] Token accounting per video; validate against the §0.4 prediction
 - [ ] Show estimated cost **before** translating a long archive — an eight-hour VOD is not a nine-cent anime episode
 - [ ] Model selector, with per-video cost shown where the backend charges per token
-- [ ] **Backend decided: Gemini API first, local Qwen3.5 as backup.** The Claude API is billed separately from a Claude Pro subscription and was not purchased. Setup instructions: [docs/translation-backends.md](docs/translation-backends.md).
+- [x] **Backend: local Qwen3.5 through Ollama.** Gemini was the planned first choice but was never needed — Qwen cleared the quality bar on the first run. The Gemini backend exists in code and remains **unverified**. Setup: [docs/translation-backends.md](docs/translation-backends.md).
 - [ ] This reverses the earlier decision to drop a second backend. That reasoning was cost-based and is now moot — the constraint is **access**, not price. Two real backends justify a thin seam between "produce translation units" and "call a model"; keep it to one function, not a plugin architecture.
 - [ ] The quality result in [eval/README.md](eval/README.md) came from the **two-pass method**, not from any particular model. Re-run the fixtures against whichever backend ships before trusting it.
 
@@ -285,7 +270,8 @@ Chunk translation is embarrassingly parallel and not latency-critical for the bl
 
 - [ ] No Japanese caption track and ASR unavailable → say so plainly rather than failing silently
 - [ ] `timedtext` returns an empty 200 (§1.1) → this is a **refusal, not an empty video**. Detect it explicitly, report it, and fall through to ASR. Never present it as success.
-- [ ] Claude API returns 429 → back off; the viewer keeps watching, so degrade to "translating…" rather than stalling playback
+- [x] Ollama unreachable or refusing (403 on an unknown origin) → reported with the fix, not a bare status code
+- [x] Analysis pass fails → degrade to an empty glossary and translate anyway. It used to abort the whole run, so one bad reply cost every subtitle.
 - [ ] Translation falls behind the playhead → show the gap honestly
 - [ ] Network drops mid-video → resume from the last completed chunk, never restart
 - [ ] Never leave a stale subtitle on screen after a seek
@@ -301,32 +287,41 @@ Chunk translation is embarrassingly parallel and not latency-critical for the bl
 - [ ] Track **name and term consistency** across a whole video — the second most visible, and what §3.1 exists to fix
 - [ ] **Baseline to beat: YouTube's own auto-translated English captions.** Observed during §1 testing — YouTube will auto-translate the Japanese ASR track to English natively, for free, with one click. That is the honest comparison, not "subtitles vs. no subtitles". If this project does not clearly beat it on pronoun resolution, names, and register, it has no reason to exist. Put it in the reference set as a scored competitor from day one.
 - [ ] Compare inputs: does an auto-generated caption track plus a strong model beat proper ASR plus the same model?
-- [ ] Compare models on the same transcript — Opus 5 costs cents per episode here, so the quality question is worth settling properly
+- [ ] Compare models on the same transcript — the popup's model picker makes this easy to try
 - [ ] Prompt version comparison harness
 
 ---
 
 ## Build Order
 
-**Revised after the §1 testing.** The original plan had step 2 as a CLI taking a YouTube URL. That is not possible: caption content requires a `pot` token only obtainable from inside a live player session (§1.2). The extension shell therefore has to come earlier.
+**All four steps complete.**
 
-1. **Extension shell — transcript extraction only.** Content script, main-world injection at `document_start`, enable the Japanese track, capture the `pot` URL, fetch the track, dump json3 to a file. No translation, no rendering. This is the risky part and it is now the first thing built, not the third.
-2. **CLI translation core** — Japanese json3 (or `.srt`) in, English `.srt` out. Where §3 gets built: two-pass design, prompt, the Japanese handling in §3.3. Runs offline against files captured in step 1, so it iterates fast and costs nothing to re-run. Build the Stage 7 reference set here.
-3. **Join them** — extension calls the translation core, renders over the player, handles seeking.
-4. **Pipelining and polish** — ahead-of-playhead scheduling, result caching, cost display, batch mode.
+**Revised once, after the §1 testing.** The original plan had step 2 as a CLI taking a YouTube URL. That is not possible: caption content requires a `pot` token only obtainable from inside a live player session (§1.2). The extension shell therefore had to come earlier — and putting the riskiest part first paid off, since it worked on the first browser load.
 
-Steps 1 and 2 are independent and can proceed in either order once step 1 has produced a few captured transcripts to work against.
+1. ✅ **Extension shell — transcript extraction only.** Content script, main-world injection at `document_start`, enable the Japanese track, capture the `pot` URL, fetch the track, dump json3 to a file. No translation, no rendering. This is the risky part and it is now the first thing built, not the third.
+2. ✅ **CLI translation core** — Japanese json3 (or `.srt`) in, English `.srt` out. Where §3 gets built: two-pass design, prompt, the Japanese handling in §3.3. Runs offline against files captured in step 1, so it iterates fast and costs nothing to re-run. Build the Stage 7 reference set here.
+3. ✅ **Join them** — extension calls the translation core, renders over the player, handles seeking.
+4. ✅ **Pipelining and polish** — result caching, per-channel glossary, progress and ETA, model picker. Ahead-of-playhead scheduling and cost display were dropped as unnecessary (§4.1, §0.4).
+
+Since then: a per-channel glossary that seeds the analysis pass and is editable from the popup, and a bounded LRU cache with pipeline versioning.
 
 ---
 
-## Open Questions
+## Questions — answered
 
-- [ ] How reliable is third-party caption access in practice (§1.1)? This gates the whole design — if `timedtext` is not dependable, Tier 3 ASR becomes the primary path rather than the fallback, and the cost model changes. **Answer this first; it is cheap to test.**
-- [ ] What fraction of target videos actually have a usable Japanese track? Sample real anime and VTuber archives before assuming Tier 1 coverage.
-- [ ] Does Tier 2 plus punctuation restoration beat Tier 3 ASR? Determines whether ASR is needed at all.
-- [ ] Progressive or blocking translation (§0.3)? Decides whether the Batch API is usable.
-- [ ] Local-only result cache, or a shared backend (§4.2)?
-- [ ] How much forward context is enough for pronoun resolution now that it is available (§3.2)?
+- [x] **How reliable is third-party caption access?** Reliable enough, but not the way expected. Track *metadata* is freely readable; track *content* needs a proof-of-origin token minted by the player, and without it the endpoint returns **HTTP 200 with an empty body** — a silent refusal. The extension gets the player to mint one and rewrites the URL (§1.2).
+- [x] **What fraction of videos have a usable Japanese track?** 20 sampled: **0 author-supplied**, 17 auto-generated, 3 none. Tier 1 does not exist for this content; the auto-generated track is the normal case, not a degraded one.
+- [x] **Is punctuation restoration needed?** No. Japanese auto-captions are already punctuated — an assumption in the original design that was simply wrong.
+- [x] **Progressive or blocking?** Progressive, though at 28× real time it barely matters (§0.3).
+- [x] **Local-only cache or shared backend?** Local only, bounded to 7 MB with LRU eviction. A shared backend would turn a personal tool into a service.
+
+## Questions — still open
+
+- [ ] **How much forward context is enough for pronoun resolution?** Never measured. The current 10 before / 6 after was chosen, not derived.
+- [ ] **Is pro-drop solvable at all here?** The one failure category still lost to YouTube. 「あ、寝ちゃった。」 → "I fell asleep" where the thing falling asleep is on screen and nowhere in the text. May need vision rather than more context.
+- [ ] **Does the MV3 worker survive a multi-hour run?** A long translation is ~17 minutes of unbroken fetches. It has worked, but has never been deliberately stress-tested. If it fails, the fix is an offscreen document.
+- [ ] **Are the quality claims real?** Everything in [eval/README.md](eval/README.md) was scored by the same party that produced one of the outputs, against a taxonomy that party wrote. A human reference translation would settle it.
+- [ ] **Over-long subtitles.** 5.9% exceed two lines; Japanese expands 2–4× into English against 64-character source units. Prompt tuning was tried and measurably failed. Remaining levers are smaller units or accepting three lines.
 
 ---
 
