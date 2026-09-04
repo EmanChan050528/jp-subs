@@ -51,6 +51,15 @@ Model choice is the only real speed lever. Measured on a 78-unit fixture with
 is generating output tokens, which chunking does not change. Pass 2 is ~80% of
 the total.
 
+**Stop translating** appears while a run is in progress. It takes effect at the
+next chunk boundary — a few seconds — rather than instantly, because a request
+already in flight is left to finish. Subtitles delivered so far stay on screen,
+since they are correct for the part that was translated, but nothing partial is
+cached.
+
+Stopping during the analysis pass only lands when that pass finishes, since it
+is one request with no boundary to check at — up to ~30 s on a long video.
+
 Once a video is translated the primary button reads **Subtitles applied** and
 is disabled — a second run on the same video buys nothing and costs minutes of
 local inference. **Re-translate** appears alongside it as the escape hatch. The

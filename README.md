@@ -162,6 +162,9 @@ to redo the current video with them.
 
 ## Other buttons
 
+**Stop translating** — appears while a run is going. Stops within a few
+seconds; whatever was already translated stays on screen.
+
 **Re-translate** — ignores the cached result and translates the video again.
 Use it after editing the glossary or switching models.
 

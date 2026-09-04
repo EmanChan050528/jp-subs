@@ -209,6 +209,20 @@ function formatDuration(ms) {
   return `${s}s`;
 }
 
+/**
+ * Finish an abandoned run. A partial translation is deliberately NOT cached —
+ * it would look complete on the next visit with no way to tell.
+ */
+async function stopRun(tabId, videoId, unitCount, translatedSoFar) {
+  setState(tabId, {
+    running: false, phase: "cancelled", eta: null, stopping: false,
+    translatedSoFar,
+  });
+  cancelled.delete(tabId);
+  await send(tabId, { type: "overlay:status", videoId, text: "" });
+  return { units: unitCount, failures: [], stopped: true };
+}
+
 /** Shape the pipeline's parallel arrays into what the overlay consumes. */
 function toOverlayUnits(units, translations) {
   return units
@@ -220,6 +234,11 @@ function toOverlayUnits(units, translations) {
 const cancelled = new Set();
 
 async function translateTab(tabId, { force = false } = {}) {
+  // Clear any leftover flag from a previous run before the first await. Doing
+  // this later wiped out a stop pressed while the transcript was being
+  // fetched.
+  cancelled.delete(tabId);
+
   const config = await settings();
   const backend = makeBackend(config.backend, {
     model: config.model,
@@ -251,7 +270,6 @@ async function translateTab(tabId, { force = false } = {}) {
 
   const transcript = extracted.data;
   const runVideoId = transcript.video_id;
-  cancelled.delete(tabId);
   const units = segment(transcript.cues);
   setState(tabId, { phase: "analysing", videoId: transcript.video_id, units: units.length });
   await send(tabId, {
@@ -264,8 +282,14 @@ async function translateTab(tabId, { force = false } = {}) {
   if (seed) {
     log(`carrying ${Object.keys(seed.names || {}).length} names forward from ${seed.author || "this channel"}`);
   }
+  if (cancelled.has(tabId)) return stopRun(tabId, runVideoId, units.length, 0);
+
   const glossary = await analyse(units, backend, transcript, log, seed);
   await rememberChannelGlossary(transcript.channel_id, glossary, transcript.author);
+
+  // Pass 1 is a single request with no chunk boundary to check at, so a stop
+  // pressed during it only lands here — up to ~30 s on a long video.
+  if (cancelled.has(tabId)) return stopRun(tabId, runVideoId, units.length, 0);
 
   setState(tabId, { phase: "translating" });
   const startedAt = Date.now();
@@ -299,11 +323,7 @@ async function translateTab(tabId, { force = false } = {}) {
   );
 
   if (stopped) {
-    // Do not cache a partial translation — it would look complete on the next
-    // visit and there would be no way to tell.
-    setState(tabId, { running: false, phase: "cancelled", eta: null });
-    cancelled.delete(tabId);
-    return { units: units.length, failures, stopped: true };
+    return stopRun(tabId, runVideoId, units.length, translationsOut.filter(Boolean).length);
   }
 
   const overlayUnits = toOverlayUnits(units, translationsOut);
@@ -405,6 +425,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ ok: false, error: `Could not list models: ${err.message}` })
       );
     return true; // async
+  }
+
+  if (msg?.type === "run:stop") {
+    // The run loop checks this between chunks, so stopping takes effect within
+    // one chunk rather than instantly. Subtitles already delivered stay put —
+    // they are correct for the part that was translated.
+    const tabId = msg.tabId ?? sender.tab?.id;
+    if (tabId !== undefined) {
+      cancelled.add(tabId);
+      setState(tabId, { stopping: true });
+      send(tabId, { type: "overlay:status", text: "Stopping…" });
+    }
+    sendResponse({ ok: true });
+    return false;
   }
 
   if (msg?.type === "run:status") {

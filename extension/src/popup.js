@@ -3,6 +3,7 @@
 const $ = (id) => document.getElementById(id);
 const goButton = $("go");
 const againButton = $("again");
+const stopButton = $("stop");
 const saveButton = $("save");
 const bar = $("bar");
 
@@ -221,6 +222,11 @@ async function refreshRunState() {
   if (state.running) {
     goButton.disabled = true;
     saveButton.disabled = true;
+    // Stopping takes effect at the next chunk boundary, so say so rather than
+    // leaving the button looking unresponsive for a few seconds.
+    stopButton.hidden = false;
+    stopButton.disabled = !!state.stopping;
+    stopButton.textContent = state.stopping ? "Stopping…" : "Stop translating";
     setProgress(state.done || 0, state.total || 0);
     const phase =
       state.phase === "translating" && state.total
@@ -237,6 +243,7 @@ async function refreshRunState() {
   setProgress(0, 0);
   bar.removeAttribute("value");
   saveButton.disabled = false;
+  stopButton.hidden = true;
 
   if (isDoneForThisVideo(state)) {
     // Nothing is gained by running it again on the same video, and a second
@@ -251,7 +258,14 @@ async function refreshRunState() {
     againButton.hidden = true;
   }
 
-  if (state.phase === "error") show(state.error, "err");
+  if (state.phase === "cancelled") {
+    show(
+      `Stopped${state.translatedSoFar ? ` after ${state.translatedSoFar} lines` : ""}.` +
+      `
+What was translated is still on screen, but nothing was saved.`,
+      "ok"
+    );
+  } else if (state.phase === "error") show(state.error, "err");
   else if (state.phase === "done") {
     const failed = state.failures?.length;
     show(
@@ -318,9 +332,19 @@ async function init() {
   await refreshRunState();
 }
 
+stopButton.addEventListener("click", async () => {
+  stopButton.disabled = true;
+  stopButton.textContent = "Stopping…";
+  await chrome.runtime.sendMessage({ type: "run:stop", tabId });
+  await refreshRunState();
+});
+
 async function startRun({ force = false } = {}) {
   goButton.disabled = true;
   againButton.hidden = true;
+  stopButton.hidden = false;
+  stopButton.disabled = false;
+  stopButton.textContent = "Stop translating";
   saveButton.disabled = true;
   show("Starting…", "ok");
   bar.removeAttribute("value"); // indeterminate
@@ -336,6 +360,7 @@ async function startRun({ force = false } = {}) {
     goButton.disabled = false;
     goButton.textContent = GO_LABEL;
     saveButton.disabled = false;
+    stopButton.hidden = true;
   }
 }
 
