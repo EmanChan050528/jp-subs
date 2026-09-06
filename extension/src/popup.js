@@ -547,4 +547,11 @@ saveButton.addEventListener("click", () =>
     );
   }));
 
+// The file translator is a full page, not a popup panel: a run there takes
+// minutes and a popup closes the moment you click away from it.
+$("fileMode").addEventListener("click", () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL("src/subtitles.html") });
+  window.close();
+});
+
 init();

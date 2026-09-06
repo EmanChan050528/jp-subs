@@ -8,6 +8,26 @@ Tags are annotated, so `git show 1.0.0` explains why each one is where it is.
 
 ---
 
+## 1.7.0 — subtitle files
+
+Japanese `.srt`/`.vtt` in, English `.srt` out, in its own tab. This is how the
+project reaches video that is not on YouTube, and it costs no per-site work:
+a subtitle file is the same thing the interceptor already extracts — timed
+cues — so the two-pass pipeline is reused unchanged. It does *not* draw
+subtitles over other sites' players; that would need the per-site player
+detection this deliberately avoids.
+
+The run lives in the page rather than the service worker, which removes the
+MV3 lifetime question from this path entirely.
+
+One parser decision earned its place: rolling captions, the scrolling kind an
+auto-generated track produces, repeat the previous cue's text at the top of the
+next one. Left alone that is the same sentence translated two or three times.
+They are collapsed on the way in — but only when the cues overlap in time,
+which is what keeps genuine repetition intact. The test suite caught that
+distinction being missed: without the overlap check, a word said twice nine
+seconds apart merged into one ten-second subtitle and an utterance was lost.
+
 ## 1.6.0 — quality of life
 
 Hide/show subtitles without discarding the translation. Glossary corrections

@@ -29,6 +29,10 @@ The video also needs a **Japanese caption track**. Nearly all Japanese YouTube
 content has one (auto-generated is fine and is the normal case). Videos with no
 Japanese track are not supported.
 
+For video that is **not** on YouTube, there is a second way in: if you can get
+hold of a Japanese `.srt` or `.vtt` file, the extension will translate that
+directly. See [Subtitle files](#subtitle-files) below.
+
 ---
 
 ## Setup
@@ -142,6 +146,40 @@ saved, so **opening that video again is instant and free**.
 
 ---
 
+## Subtitle files
+
+The extension is built around YouTube, but the translator itself only needs
+**timed Japanese text**. So it will also take a subtitle file, which is how you
+reach video that lives anywhere else — Niconico, Bilibili, a local file, a
+stream you have an archive of.
+
+Open the popup and press **Translate a subtitle file…**. It opens its own tab.
+Drop a Japanese `.srt` or `.vtt` in, press **Translate**, and download the
+English `.srt` when it finishes. Load that into VLC, mpv, or whatever player
+you are using.
+
+Everything else is the same: the same two-pass pipeline, the same model, the
+same quality. What you do not get is subtitles drawn over the player — the
+overlay only exists on YouTube, because anywhere else would need per-site work
+to find the video element and follow its clock.
+
+**Two things worth knowing.**
+
+The **Title or context** box is optional but pays for itself. The first pass
+uses it to work out what the video is, which is what lets it tell a game
+mechanic from a dictionary definition. "Hololive stream, Stardew Valley" is
+enough.
+
+**Keep the tab open.** Unlike a YouTube run, this one lives in the page, so
+closing the tab ends it. That is a deliberate trade: it also means the run
+cannot be killed by Chrome's service-worker timeout.
+
+Rolling captions — the repeated, scrolling kind that come out of an
+auto-generated YouTube track — are collapsed on the way in, so a line is not
+translated two or three times over.
+
+---
+
 ## Settings
 
 Open the popup and expand **Settings**.
@@ -200,6 +238,10 @@ translated, and works from the cache too.
 **Save transcript only** — downloads the raw Japanese transcript as JSON
 without calling the model at all.
 
+**Translate a subtitle file…** — opens the file translator in its own tab. See
+[Subtitle files](#subtitle-files). Always available, including when you are not
+on a YouTube page.
+
 ---
 
 ## Good to know
@@ -210,8 +252,8 @@ without calling the model at all.
 - **Subtitles are hidden during ads** and reappear afterwards.
 - **YouTube's own captions are switched off again** after the extension borrows
   them during setup.
-- **It only handles Japanese → English**, and only on YouTube videos that
-  already have a caption track.
+- **It only handles Japanese → English.** On YouTube the video must already
+  have a caption track; elsewhere, you have to supply a subtitle file.
 
 ---
 

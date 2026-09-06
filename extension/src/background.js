@@ -13,15 +13,7 @@ import { segment } from "./core/segment.js";
 import { analyse, translateUnits } from "./core/pipeline.js";
 import { makeBackend } from "./core/backends.js";
 import { toSrt } from "./core/srt.js";
-
-const DEFAULTS = {
-  backend: "ollama",
-  model: "qwen3.5:9b",
-  host: "http://localhost:11434",
-  size: 20,
-  contextBefore: 10,
-  contextAfter: 6,
-};
+import { loadSettings, formatDuration } from "./shared.js";
 
 /** Per-tab run state, polled by the popup. */
 const runs = new Map();
@@ -204,11 +196,6 @@ function setState(tabId, patch) {
   return next;
 }
 
-async function settings() {
-  const stored = await chrome.storage.local.get(Object.keys(DEFAULTS));
-  return { ...DEFAULTS, ...stored };
-}
-
 function send(tabId, message) {
   // Swallowing these hid a whole class of failure: the pipeline reports
   // success while nothing ever reaches the page.
@@ -216,14 +203,6 @@ function send(tabId, message) {
     console.warn(`[jpsub] could not deliver ${message.type} to tab ${tabId}:`, err?.message || err);
     setState(tabId, { deliveryError: `${message.type}: ${err?.message || err}` });
   });
-}
-
-/** "1h 5m", "2m 10s", "45s" — coarse on purpose, an ETA implies less than it knows. */
-function formatDuration(ms) {
-  const s = Math.max(0, Math.round(ms / 1000));
-  if (s >= 3600) return `${Math.floor(s / 3600)}h ${Math.round((s % 3600) / 60)}m`;
-  if (s >= 60) return `${Math.floor(s / 60)}m ${s % 60}s`;
-  return `${s}s`;
 }
 
 /**
@@ -269,7 +248,7 @@ async function translateTab(tabId, { force = false } = {}) {
   const controller = new AbortController();
   inFlight.set(tabId, controller);
 
-  const config = await settings();
+  const config = await loadSettings();
   const backend = makeBackend(config.backend, {
     model: config.model,
     host: config.host,
@@ -557,7 +536,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg?.type === "models:list") {
-    settings()
+    loadSettings()
       .then(async (config) => {
         const res = await fetch(`${config.host}/api/tags`);
         if (!res.ok) throw new Error(`Ollama returned HTTP ${res.status}`);
