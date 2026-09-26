@@ -24,6 +24,7 @@ free, and segmentation is where the subtle damage happens.
 | `--context-before` | 10 | read-only units before |
 | `--context-after` | 6 | read-only units after |
 | `--limit` | — | only the first N cues; use this first |
+| `--no-echo` | — | plain replies: faster, but lines can shift onto neighbours on fragmented speech |
 | `--out` | input's directory | |
 
 ## Backends

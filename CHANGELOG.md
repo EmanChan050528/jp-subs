@@ -8,6 +8,34 @@ Tags are annotated, so `git show 1.0.0` explains why each one is where it is.
 
 ---
 
+## Unreleased — lines stay on their own subtitle
+
+Ported back from [whisper-subs](https://github.com/EmanChan050528/whisper-subs),
+where it was found and measured.
+
+On fragmented speech the model would rebuild whole sentences and spread the
+English across the line numbers, putting each translation on a neighbouring
+subtitle. Every line still "has a translation", so nothing flagged it. Pass 2
+now asks for `{"n": {"ja": "<the line, copied>", "en": "..."}}`. Writing the
+line out right before its English anchors the translation to it, and a copy
+that doesn't match its line is rejected and asked for again.
+
+- On whisper-subs' hour-long conversation a chunk shifted in 3 of 3 runs with
+  the old format and was aligned in 3 of 3 with this one.
+- Here, on `EmteTL5Ij8g` 30–40 min (the most fragmented fixture), the old
+  format shifted lines 8–14, so each showed the next line's English
+  (「あれ?」 → "Are there three of them?"). With echo there was one 2-line
+  fold and no run of wrong lines. Checked with whisper-subs' `eval/align.py`.
+- Cost: more output tokens, so 57 s instead of 37 s on that fixture.
+- On by default (extension settings `echo`, CLI `--no-echo` to turn it off).
+  The core's default is off, so `translateUnits` without the option behaves
+  exactly as before. whisper-subs' byte-for-byte parity tests confirm the
+  plain path is unchanged and cover the echo path too.
+- Copying only the first few characters of each line was tried in whisper-subs
+  and made shifts worse.
+
+---
+
 ## 1.7.0 — subtitle files
 
 Japanese `.srt`/`.vtt` in, English `.srt` out, in its own tab. This is how the

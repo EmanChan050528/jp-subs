@@ -59,8 +59,18 @@ Hard limits — a reply that breaks these is useless:
 
 /**
  * Pass 2. Translate one chunk, with surrounding units available as context.
+ *
+ * `echo` asks for {"n": {"ja", "en"}} instead of {"n": "en"}: the model copies
+ * each line's Japanese right before its English. On fragmented speech the
+ * model otherwise rebuilds whole sentences and spreads the English across
+ * neighbouring numbers, shifting every later line; the copy anchors each
+ * translation to its own line, and a copy that does not match reveals a
+ * shift so the pipeline can reject it. Measured in whisper-subs
+ * (docs/benchmarks.md there): a chunk that shifted in 3 of 3 runs was aligned
+ * in 3 of 3. Copying only the first few characters was tried and made shifts
+ * worse. The text below is kept identical to whisper-subs' prompt.py.
  */
-export function translationPrompt(chunk, glossary, lines = null) {
+export function translationPrompt(chunk, glossary, lines = null, { echo = false } = {}) {
   const context = (units, label) =>
     units.length
       ? `${label}\n${units.map((u) => u.ja).join("\n")}\n`
@@ -95,9 +105,25 @@ Rules:
 9. Translate ONLY the numbered lines. The context sections are for understanding; never fold their content into an answer.
 10. Output plain sentences. No leading or trailing ellipses, no surrounding quotation marks, no speaker labels.
 
-Return JSON mapping each line number to its English translation, and nothing else:
+${echo ? replyEcho(items) : replyPlain(items)}`;
+}
+
+function replyPlain(items) {
+  return `Return JSON mapping each line number to its English translation, and nothing else:
 
 {${items.slice(0, 2).map((it) => `"${it.n}": "..."`).join(", ")}}
 
 Every number listed above must appear exactly once. No preamble, no code fence.`;
+}
+
+function replyEcho(items) {
+  const example = items
+    .slice(0, 2)
+    .map((it) => `"${it.n}": {"ja": ${JSON.stringify(it.ja)}, "en": "..."}`)
+    .join(", ");
+  return `Return JSON mapping each line number to an object holding that line's Japanese, copied exactly, and its English translation, and nothing else:
+
+{${example}}
+
+Every number listed above must appear exactly once, with its own Japanese copied into "ja". Each "en" translates only the Japanese in its own "ja". When a sentence runs across several lines, split the English at the same places. Never move words to a neighbouring line, and never leave a line's "en" empty because its meaning was folded into another line. No preamble, no code fence.`;
 }

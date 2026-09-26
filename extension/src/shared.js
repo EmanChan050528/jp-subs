@@ -11,6 +11,10 @@ export const DEFAULTS = {
   size: 20,
   contextBefore: 10,
   contextAfter: 6,
+  // Copy-then-translate replies ({"n": {"ja", "en"}}): the model copies each
+  // line's Japanese before its English, which stops translations sliding onto
+  // neighbouring lines on fragmented speech. See core/prompt.js.
+  echo: true,
 };
 
 export async function loadSettings() {

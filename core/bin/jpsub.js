@@ -37,6 +37,7 @@ Options:
   --context-before <n>  read-only units before  (default 10)
   --context-after <n>   read-only units after   (default 6)
   --limit <n>         only process the first N units — use this first, it is cheap
+  --no-echo           plain replies: faster, but lines can shift on fragmented speech
   --out <dir>         output directory (default: alongside the input)
   --show <n>          segment: print the first N units (default 12)
 `;
@@ -57,6 +58,9 @@ function options(flags) {
     size: num(flags.size, 20),
     contextBefore: num(flags["context-before"], 10),
     contextAfter: num(flags["context-after"], 6),
+    // Copy-then-translate replies keep each line's English on its own line.
+    // --no-echo restores the plain {"n": "en"} format.
+    echo: !flags["no-echo"],
   };
 }
 

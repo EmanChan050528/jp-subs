@@ -80,6 +80,40 @@ export async function analyse(units, backend, meta = {}, log = () => {}, seed = 
   return glossary;
 }
 
+/** Punctuation and spacing a model drops or changes when copying a line. */
+const COPY_NOISE = /[\s、。，．！？!?「」『』…・〜ー~]/g;
+
+/** Longest common subsequence length, for echoMatches. */
+function lcs(a, b) {
+  const row = new Array(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = 0;
+    for (let j = 1; j <= b.length; j++) {
+      const up = row[j];
+      row[j] = a[i - 1] === b[j - 1] ? diag + 1 : Math.max(row[j], row[j - 1]);
+      diag = up;
+    }
+  }
+  return row[b.length];
+}
+
+/**
+ * Is `copied` this line's Japanese, allowing for a slightly garbled copy?
+ *
+ * Models copy imperfectly (dropped punctuation, a changed kana). A shifted
+ * line is a *different* line and scores far below the threshold, except for a
+ * genuine repeat, where either translation is right anyway. whisper-subs uses
+ * Python's difflib ratio; this is the LCS equivalent, 2*LCS/(|a|+|b|).
+ */
+export function echoMatches(source, copied, threshold = 0.7) {
+  if (typeof copied !== "string") return false;
+  const a = [...source.normalize("NFKC").replace(COPY_NOISE, "")];
+  const b = [...copied.normalize("NFKC").replace(COPY_NOISE, "")];
+  if (!a.length || !b.length) return a.length === b.length;
+  if (a.join("") === b.join("")) return true;
+  return (2 * lcs(a, b)) / (a.length + b.length) >= threshold;
+}
+
 /** Pass 2: translate every chunk. Returns an array parallel to `units`. */
 export async function translateUnits(
   units, glossary, backend, options = {}, log = () => {}, onProgress = () => {}
@@ -87,19 +121,37 @@ export async function translateUnits(
   const chunks = chunk(units, options);
   const translations = new Array(units.length).fill("");
   const failures = [];
+  const echo = !!options.echo;
 
   /** Ask for a specific set of lines; write whatever comes back. */
-  const request = async (c, lines, label) => {
-    const raw = await backend(translationPrompt(c, glossary, lines), { json: true });
+  const request = async (c, lines, label, lastTry = false) => {
+    const raw = await backend(translationPrompt(c, glossary, lines, { echo }), { json: true });
     const map = parseJson(raw, label);
     let filled = 0;
+    let rejected = 0;
     for (const line of lines) {
-      const value = map[String(line.n)];
+      let value = map[String(line.n)];
+      if (echo && value && typeof value === "object") {
+        // The copied Japanese must be this line's. If it is a neighbour's,
+        // the model has shifted: leave the line outstanding so the retry
+        // asks for it on its own.
+        if (!echoMatches(line.ja, value.ja)) {
+          rejected += 1;
+          continue;
+        }
+        value = value.en;
+      } else if (echo && !lastTry) {
+        // A bare string cannot be checked. Accept one only when the
+        // alternative is a missing subtitle.
+        rejected += 1;
+        continue;
+      }
       if (typeof value === "string" && value.trim()) {
         translations[line.n - 1] = value.trim();
         filled += 1;
       }
     }
+    if (rejected) log(`${label}: rejected ${rejected} line(s) whose copied Japanese did not match`);
     return filled;
   };
 
@@ -133,7 +185,7 @@ export async function translateUnits(
       const missing = outstanding(c);
       log(`${label}: retrying ${missing.length} missing line(s)`);
       try {
-        await request(c, missing, `${label} retry ${attempt}`);
+        await request(c, missing, `${label} retry ${attempt}`, attempt === 2);
       } catch (err) {
         log(`${label}: retry ${attempt} failed — ${err.message}`);
       }
