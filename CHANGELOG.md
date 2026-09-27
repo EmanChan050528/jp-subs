@@ -36,6 +36,30 @@ that doesn't match its line is rejected and asked for again.
 
 ---
 
+## 1.9.0 — language plumbing
+
+Step 2 of the Korean expansion. Still not Korean translation — but the
+extension stops pretending Korean videos have no captions.
+
+The interceptor no longer hardcodes `lang=ja`. It picks a source track by
+priority (Japanese first, so a video carrying both still translates) and
+rewrites the signed URL to whatever it found. This needed no new mechanism:
+`sparams` never covered `lang`, so extraction was always language-agnostic and
+only the hardcoded string made it look otherwise.
+
+That splits one capability into two, which `core/languages.js` now records
+separately. **Korean captions can be extracted today** — `Save transcript only`
+works on them, which is a far better way to collect Korean fixtures than
+fighting yt-dlp's rate limits. Translating them is refused, with the reason,
+because the prompt for it is not written.
+
+A Korean video now reports "Korean, auto-generated — cannot be translated yet"
+instead of "no Japanese caption track", which was true and useless.
+
+Not done deliberately: no language parameter was threaded into `prompt.js`.
+There is one value it could take today. It gets threaded in step 3, when there
+are two.
+
 ## 1.8.0 — Korean groundwork
 
 Step 1 of the Korean expansion: the mechanical fixes, all provable against the

@@ -435,9 +435,34 @@ Japanese cannot solve without vision.**
 | Hangul detection | `core/script.js` | ✅ 1.8.0 |
 | Strip `>>` and use it as a turn boundary | `segment()`; units now carry `turn` | ✅ 1.8.0 |
 | Re-tune `maxChars` for Korean density | **measured, not needed** — the 64-char cap binds on 0.7% of Korean units against 6.4% of Japanese ones | ✅ |
-| Language plumbing (`lang=ja` is hardcoded in `interceptor.js`) | step 2 | ⬜ |
+| Language plumbing | `core/languages.js`; interceptor selects by priority | ✅ 1.9.0 |
 | Korean prompt replacing the §3.3 rules | **the actual work** | ⬜ |
 | Korean evaluation set | blocked on a Korean reader | ⬜ |
+
+### 8.6 Extraction and translation are separate capabilities
+
+Step 2 turned one question into two, and the split is the useful part.
+
+**Extraction is language-agnostic and always was.** The rewrite in §1.2 works
+because `sparams` does not cover `lang`; nothing about that is Japanese. Once
+the hardcoded `"ja"` came out, Korean extraction worked with no new mechanism —
+the same signed URL, pointed somewhere else. Korean transcripts can now be
+pulled with **Save transcript only**, which is how the remaining Korean
+fixtures should be collected rather than fighting yt-dlp's rate limits.
+
+**Translation is not**, because it needs a prompt written against a specific
+language's failure modes. So `languages.js` carries two flags, not one, and
+Korean is `extract: true, translate: false`. A Korean video now reports
+*"Korean, auto-generated — cannot be translated yet"* instead of the old
+*"no Japanese caption track"*, which was true and useless.
+
+**What was deliberately not done:** threading a language parameter into
+`prompt.js`. There is exactly one value it could take today, and §0.2's warning
+about speculative generality applies to the language axis as much as the
+source axis. It gets threaded in step 3, when there is a second value.
+
+`segment.js` needed no language parameter at all — after step 1 its spacing
+decision is per-character, so it adapts on its own.
 
 **Result of step 1**, measured on the committed fixtures:
 

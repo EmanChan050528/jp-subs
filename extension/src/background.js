@@ -14,6 +14,7 @@ import { analyse, translateUnits } from "./core/pipeline.js";
 import { makeBackend } from "./core/backends.js";
 import { toSrt } from "./core/srt.js";
 import { loadSettings, formatDuration } from "./shared.js";
+import { canTranslate, languageOf, labelOf } from "./core/languages.js";
 
 /** Per-tab run state, polled by the popup. */
 const runs = new Map();
@@ -280,6 +281,20 @@ async function translateTab(tabId, { force = false } = {}) {
 
   const transcript = extracted.data;
   const runVideoId = transcript.video_id;
+
+  // Extraction is language-agnostic; translation is not. Refuse here, with
+  // the reason, rather than running a Japanese prompt over Korean and
+  // shipping confident nonsense.
+  const sourceLang = transcript.source_lang || "ja";
+  if (!canTranslate(sourceLang)) {
+    const info = languageOf(sourceLang);
+    throw new Error(
+      `${labelOf(sourceLang)} is not supported yet. ` +
+      (info?.pending || "") +
+      ` You can still use "Save transcript only" to extract the captions.`
+    );
+  }
+
   const units = segment(transcript.cues);
   setState(tabId, {
     phase: "analysing", videoId: transcript.video_id, units: units.length,

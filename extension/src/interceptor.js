@@ -102,8 +102,23 @@
     return playerResponse()?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
   }
 
-  function japaneseTrack() {
-    return captionTracks().find((t) => t.languageCode === "ja") || null;
+  /**
+   * Source languages, best first. Japanese leads because it is the one that
+   * can actually be translated; a video carrying both should not stop.
+   *
+   * Duplicated from core/languages.js rather than imported: this file is a
+   * MAIN-world content script and those are classic scripts, so there is no
+   * module system here. Keep the two in step.
+   */
+  const SOURCE_PRIORITY = ["ja", "ko"];
+
+  function sourceTrack() {
+    const tracks = captionTracks();
+    for (const code of SOURCE_PRIORITY) {
+      const found = tracks.find((t) => t.languageCode === code);
+      if (found) return found;
+    }
+    return null;
   }
 
   /** Newest captured token URL belonging to the current video, whatever track. */
@@ -116,13 +131,15 @@
   }
 
   /**
-   * Point a captured token URL at the Japanese track.
-   * Safe because lang/kind/tlang are outside the signed sparams set.
+   * Point a captured token URL at a given source track.
+   * Safe because lang/kind/tlang are outside the signed sparams set — which is
+   * also why this generalises for free: the signature does not cover `lang`,
+   * so any language is the same rewrite.
    */
-  function pointAtJapanese(url, track) {
+  function pointAtTrack(url, track) {
     const u = new URL(url, location.origin);
     u.searchParams.delete("tlang");        // drop YouTube's own translation
-    u.searchParams.set("lang", "ja");
+    u.searchParams.set("lang", track.languageCode);
     if (track.kind) u.searchParams.set("kind", track.kind);
     else u.searchParams.delete("kind");
     u.searchParams.set("fmt", "json3");
@@ -139,9 +156,9 @@
       throw new Error("YouTube player API not available on this page yet.");
     }
 
-    const track = japaneseTrack();
+    const track = sourceTrack();
     const option = {
-      languageCode: "ja",
+      languageCode: track.languageCode,
       kind: track.kind || "",
       name: track.name?.simpleText || "",
       vss_id: track.vssId || "",
@@ -236,7 +253,7 @@
   const commands = {
     detect() {
       const pr = playerResponse();
-      const track = japaneseTrack();
+      const track = sourceTrack();
       return {
         onWatchPage: !!new URLSearchParams(location.search).get("v"),
         videoId: videoId(),
@@ -249,15 +266,26 @@
           lang: t.languageCode,
           kind: t.kind || "manual",
         })),
-        japanese: track ? { kind: track.kind || "manual" } : null,
+        // What we would actually use. `japanese` is kept as an alias so an
+        // older popup still works against a newer interceptor during a reload.
+        source: track ? { lang: track.languageCode, kind: track.kind || "manual" } : null,
+        japanese: track?.languageCode === "ja" ? { kind: track.kind || "manual" } : null,
         haveTokenUrl: !!tokenUrl(),
       };
     },
 
     async extract() {
       const pr = playerResponse();
-      const track = japaneseTrack();
-      if (!track) throw new Error("This video has no Japanese caption track.");
+      // Extraction is language-agnostic on purpose: the rewrite does not care
+      // what `lang` it points at, so a Korean track comes out of here exactly
+      // as a Japanese one does. Whether it can be *translated* is decided
+      // later, by whether a prompt exists for it.
+      const track = sourceTrack();
+      if (!track) {
+        throw new Error(
+          "This video has no Japanese or Korean caption track."
+        );
+      }
 
       if (!tokenUrl()) await triggerCaptionFetch();
 
@@ -269,7 +297,7 @@
         );
       }
 
-      const cues = toCues(await fetchTrack(pointAtJapanese(seed, track)));
+      const cues = toCues(await fetchTrack(pointAtTrack(seed, track)));
       const duration = Number(pr?.videoDetails?.lengthSeconds) || null;
       const lastCue = cues.length ? Math.round(cues[cues.length - 1].t_ms / 1000) : 0;
 
@@ -279,7 +307,8 @@
         channel_id: pr?.videoDetails?.channelId || null,
         author: pr?.videoDetails?.author || null,
         duration_s: duration,
-        source: `youtube caption track (kind=${track.kind || "manual"}, lang=ja)`,
+        source_lang: track.languageCode,
+        source: `youtube caption track (kind=${track.kind || "manual"}, lang=${track.languageCode})`,
         captured_at: new Date().toISOString(),
         cue_count: cues.length,
         last_cue_s: lastCue,

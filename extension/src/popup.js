@@ -28,6 +28,14 @@ async function withFeedback(button, busyLabel, fn) {
   }
 }
 
+/**
+ * Source languages, duplicated from core/languages.js because this popup is a
+ * classic script with no module system. Keep the two in step — the worker's
+ * copy is the one that actually gates a run.
+ */
+const LANG_LABEL = { ja: "Japanese", ko: "Korean" };
+const TRANSLATABLE = new Set(["ja"]);
+
 const bar = $("bar");
 
 let tabId = null;
@@ -431,13 +439,31 @@ async function init() {
     ["Tracks", d.tracks.length ? d.tracks.map((t) => `${t.lang} (${t.kind})`).join(", ") : "none"],
   ];
 
-  if (d.japanese) {
-    rows.push(["Japanese", d.japanese.kind === "asr" ? "auto-generated" : "author-supplied"]);
-    goButton.disabled = false;
+  // `source` is whichever track would actually be used. Extraction works for
+  // any of them; translation only for the ones with a prompt behind them.
+  const src = d.source || (d.japanese ? { lang: "ja", ...d.japanese } : null);
+
+  if (src) {
+    const kind = src.kind === "asr" ? "auto-generated" : "author-supplied";
+    const translatable = TRANSLATABLE.has(src.lang);
+    rows.push([LANG_LABEL[src.lang] || src.lang, kind, translatable ? undefined : "warn"]);
+
+    // Extracting is language-agnostic, so "Save transcript only" stays live
+    // even when the language cannot be translated yet.
     saveButton.disabled = false;
+    goButton.disabled = !translatable;
+
+    if (!translatable) {
+      show(
+        `This video's captions are ${LANG_LABEL[src.lang] || src.lang}, which ` +
+        `cannot be translated yet — the prompt for it is not written. ` +
+        `"Save transcript only" still works.`,
+        "err"
+      );
+    }
   } else {
-    rows.push(["Japanese", "not available", "warn"]);
-    show("No Japanese caption track on this video.", "err");
+    rows.push(["Captions", "no Japanese or Korean track", "warn"]);
+    show("No Japanese or Korean caption track on this video.", "err");
   }
 
   if (cachedHere) {
