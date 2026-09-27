@@ -64,6 +64,14 @@ analysis pass, which this file's own rule forbids without a fixture run behind
 it. Caught by diffing against the previous commit, not by a test. The Japanese
 prompts are now snapshot-hashed so the next parameterisation cannot repeat it.
 
+**Since release, from use.** Korean is coherent on clean single-speaker audio
+and incoherent on a multi-speaker archive whose caption track the speech
+recognition had already wrecked. Same prompt, same pipeline, opposite results,
+and the variable was the input — so the binding constraint on Korean is the
+ASR, not the translator. The README now states this as *content* guidance
+rather than a language caveat, because it applies to Japanese identically.
+Coherent is still not accurate, and the `unvalidated` flag stays.
+
 ## 1.9.0 — language plumbing
 
 Step 2 of the Korean expansion. Still not Korean translation — but the

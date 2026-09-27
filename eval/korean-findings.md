@@ -215,14 +215,30 @@ So this result establishes that the Korean pipeline **produces well-formed
 English from clean input**. It does not establish accuracy, and the
 `unvalidated` flag stays until a Korean reader scores it.
 
-## Still open
+## Parked
 
-**Scoring the Korean→English accuracy.** Everything above is structural and
-needed no Korean. Judging whether a given line *means* the right thing still
-needs a Korean reader — the same wall the Japanese evaluation hit. What has
-changed is that the premise no longer depends on that judgement: the
-fragmentation, the severed negations and the unstable names are defects in the
-English on their own terms.
+**Scoring the Korean→English accuracy — parked 2026-09-27, waiting on a Korean
+reader.** Everything above is structural and needed no Korean. Judging whether
+a given line *means* the right thing does not, and that is the same wall the
+Japanese evaluation hit; it is parked for the same reason and alongside it in
+[`reference/`](reference/).
+
+Parked, not abandoned. What is already settled without a reader:
+
+- the premise — YouTube's Korean output is damaged in the English itself (§6)
+- the mechanics — segmentation, spacing, turns, all measured (§1–§5)
+- the ceiling — clean audio translates coherently, wrecked audio does not, and
+  the difference is the ASR rather than anything here (§7, §8)
+
+What a reader would add, and nothing else can: whether a fluent line is
+*correct*. That is the one question this project cannot answer about itself in
+either language, and it is worth being plain that it is the same gap twice
+rather than a Korean-specific shortfall.
+
+**When it resumes**, the work is already laid out: a `ko` fixture pair in the
+shape of the Japanese one, scored against the seven-category taxonomy in
+[`README.md`](README.md), with the Korean-only categories from §8.5 of the
+design doc added — kinship-as-address and speech level.
 
 ## Cost estimate, now grounded
 

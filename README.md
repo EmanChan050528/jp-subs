@@ -244,6 +244,36 @@ on a YouTube page.
 
 ---
 
+## What translates well
+
+The biggest factor in how good the subtitles are is **not** the model, the
+language, or this extension. It is how clean the original audio was, because
+everything here is built on top of YouTube's speech recognition and cannot be
+better than its input.
+
+| Works well | Struggles |
+|---|---|
+| One person talking | Several people at once |
+| Clear audio, little background noise | Music or game audio over speech |
+| Steady pace, complete sentences | Rapid-fire banter, heavy slang |
+| Common vocabulary | In-jokes and invented words |
+
+A solo commentary or a talk video usually comes out clean. A long multi-person
+stream archive with people talking over each other is the hard case: the
+caption track itself arrives garbled, and no translator can recover what was
+never recognised.
+
+**How to tell which you have.** Turn on YouTube's own captions and read the
+original-language track for a few lines. If it looks broken there, it will be
+broken here — that is the ceiling, not something this extension can fix.
+Comparing against YouTube's auto-translated English is the fair test; comparing
+against what was actually said is not, because neither system got that.
+
+This applies equally to Japanese and Korean. Content matters far more than
+language.
+
+---
+
 ## Good to know
 
 - **Overlapping speech gets jumbled.** YouTube's Japanese recognition produces

@@ -437,9 +437,9 @@ Japanese cannot solve without vision.**
 | Re-tune `maxChars` for Korean density | **measured, not needed** — the 64-char cap binds on 0.7% of Korean units against 6.4% of Japanese ones | ✅ |
 | Language plumbing | `core/languages.js`; interceptor selects by priority | ✅ 1.9.0 |
 | Korean prompt replacing the §3.3 rules | `core/prompt.js`; five rules, two of them Korean-only | ✅ 1.10.0, **unscored** |
-| Korean evaluation set | blocked on a Korean reader | ⬜ |
+| Korean evaluation set | blocked on a Korean reader | ⏸ **parked** |
 
-### 8.7 The Korean rules, and what they are worth
+### 8.5 The Korean rules, and what they are worth
 
 Japanese has three language-specific rules; Korean has five. Three are the
 same categories — pro-drop, verb-final polarity, fragments — with different
@@ -516,7 +516,40 @@ decision is per-character, so it adapts on its own.
 > fixtures, invisible to a count-based check. The test suite now asserts on
 > content, not just cardinality.
 
-### 8.5 Chinese is not next
+### 8.7 The ceiling is the ASR, and that reframes the whole quality question
+
+Two Korean videos, same prompt, same pipeline, opposite results. A 147-minute
+multi-speaker archive produced nonsense; a 28-minute single-speaker video with
+clean audio produced coherent English. The variable was the input, not
+anything in this project.
+
+Working backwards, the source track for the first was visibly damaged, and two
+tells need no Korean to read: YouTube's own translator **transliterated** a
+phrase rather than translating it — a translator spelling something out is
+announcing that it did not parse — and it **silently repaired** a corrupted
+group name, guessing the referent from context. Both systems then failed at
+the same timestamps from the same transcript, which puts the fault upstream of
+either.
+
+**This generalises past Korean.** Everything downstream of §1 is built on
+YouTube's speech recognition and cannot exceed it. The project's quality
+therefore varies by *content* — audio conditions, speaker count, vocabulary —
+far more than by language or model. That is now the guidance in the README,
+stated as content advice rather than a language caveat, because it is the
+more useful framing for someone deciding whether to point this at a video.
+
+It also sharpens what §7's baseline means. Against a wrecked source track the
+honest question is never "does this match what was said" — neither system had
+that — but "is this better than YouTube's English on the same line".
+
+> **A trap this creates.** The clean-audio result is easy to over-read.
+> Coherent English is not accurate English, and the failure this project
+> exists to fix produces *fluent* wrong output: 「あ、寝ちゃった。」 →
+> "Oh, I fell asleep" reads perfectly and is wrong. A reader without the
+> source language cannot tell a correct line from a confidently misattributed
+> one, so no amount of "it reads well" substitutes for §7.
+
+### 8.8 Chinese is not next
 
 Nothing here transfers to Chinese. It is SVO, has no honorific system, and the
 §3.3 categories largely do not apply. Korean is cheap *because* it is
@@ -541,9 +574,9 @@ Since then: a per-channel glossary that seeds the analysis pass and is editable 
 
 ### Next
 
-6. 🟡 **Korean** (§8). Runs, unscored. Segmentation and script predicates in 1.8.0, language plumbing in 1.9.0, the prompt in 1.10.0. What remains is the part that always blocked on a reader: the evaluation set. Korean is usable and labelled unvalidated, which is the honest state — not finished, not hidden.
+6. 🟡 **Korean** (§8). Runs, unscored, and **parked here deliberately**. Segmentation and script predicates in 1.8.0, language plumbing in 1.9.0, the prompt in 1.10.0. Confirmed coherent on clean audio, incoherent on a source track the ASR had already wrecked (§8.7). The only remaining step is the evaluation set, which blocks on a Korean reader — the same wall as Japanese (§7), and parked for the same reason. Korean is usable and labelled unvalidated, which is the honest state: not finished, not hidden.
 
-Not planned: Chinese (§8.5), a pluggable transcript-source interface (§0.2), ahead-of-playhead scheduling (§4.1), live streams (Appendix A).
+Not planned: Chinese (§8.8), a pluggable transcript-source interface (§0.2), ahead-of-playhead scheduling (§4.1), live streams (Appendix A).
 
 ---
 
