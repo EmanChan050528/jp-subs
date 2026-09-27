@@ -246,9 +246,11 @@ on a YouTube page.
 
 ## Good to know
 
-- **Overlapping speech gets jumbled.** YouTube's speech recognition produces one
-  undifferentiated stream with no speaker labels, so nothing downstream can
-  separate two people talking at once.
+- **Overlapping speech gets jumbled.** YouTube's Japanese recognition produces
+  one undifferentiated stream with no speaker labels, so nothing downstream can
+  separate two people talking at once. (This is a property of the Japanese
+  track specifically — Korean auto-captions *do* mark speaker changes. Not
+  something this tool can use today, since it only handles Japanese.)
 - **Subtitles are hidden during ads** and reappear afterwards.
 - **YouTube's own captions are switched off again** after the extension borrows
   them during setup.

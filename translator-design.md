@@ -2,7 +2,28 @@
 
 A browser extension that takes a YouTube video, obtains a Japanese transcript, translates it with a **local model through Ollama**, and renders English subtitles over the player.
 
-> **Status: built and in use.** All four build steps are complete. This document is now a record of the design and the reasoning behind it, updated to match what was actually built and measured. Where a prediction turned out wrong, the correction is kept alongside it rather than quietly replaced — the wrong predictions are the useful part.
+> **Status: built and in use.** All four build steps are complete, plus a fifth (subtitle files). This document is now a record of the design and the reasoning behind it, updated to match what was actually built and measured. Where a prediction turned out wrong, the correction is kept alongside it rather than quietly replaced — the wrong predictions are the useful part.
+
+### Progress at a glance
+
+Reconciled against the code on 2026-09-27. A checkbox in the stages below means
+*shipped*; `~~struck through~~` means dropped, with the reason kept.
+
+| Stage | State |
+|---|---|
+| 0 — Scope | Settled. Two corrections recorded: Korean was mis-scoped (§0.1), and "transcript source" was drawn too widely (§0.2). |
+| 1 — Transcript acquisition | **Built.** Gap: no ASR fallback for the ~15% of videos with no track. |
+| 2 — Document preparation | **Built.** Three tiers collapsed to one, because author-supplied tracks do not exist for this content. |
+| 3 — Translation | **Built.** Gaps: context window sizes never tuned; pro-drop unsolved. |
+| 4 — Pipelining and storage | **Built.** Ahead-of-playhead scheduling deliberately dropped. |
+| 5 — Rendering | **Built.** Gaps: no user styling, no dual JA/EN display. |
+| 6 — Cost and failure | **Largely dissolved** — a local model has no cost. Gap: no resume after a dropped connection. |
+| 7 — Evaluation | **Weakest stage.** Baseline comparison built; human reference parked on a Japanese reader; no prompt-version harness. |
+| 8 — Korean | **Tested, not built.** Premise confirmed, costs measured. |
+
+The honest summary: the *pipeline* is complete and the *evaluation* is not.
+Every quality claim in this project is author-scored, and that is the single
+largest outstanding weakness — not any missing feature.
 >
 > Setup and usage live in [README.md](README.md). Component detail is in [extension/README.md](extension/README.md), [core/README.md](core/README.md) and [eval/README.md](eval/README.md).
 
@@ -102,6 +123,13 @@ What *did* carry over from it:
 
 ## Stage 1 — Transcript Acquisition
 
+**Built and working.** Most bullets below are *findings from testing*, not
+outstanding work — they were written as checkboxes before the distinction
+mattered and are left unticked because they are not tasks to complete. The one
+genuine gap is the ASR fallback for videos with no track at all (§1.4), which
+is not built and is the reason the tool says "no Japanese caption track"
+rather than degrading to something else.
+
 **This stage was tested against live YouTube on 2026-09-03 before the rest of the design was trusted. Findings below are measured, not assumed.** See §1.5 for the raw results.
 
 ### 1.1 How caption access actually works
@@ -183,12 +211,12 @@ Measured on a 7h53m VTuber archive (`EmteTL5Ij8g`, 28,382 s):
 
 ## Stage 2 — Document Preparation
 
-- [ ] Normalise all three tiers into one internal format: a list of `{start, end, text}` cues
+- [x] ~~Normalise all three tiers into one internal format~~ — **collapsed to one tier.** Of 20 videos sampled, 0 had an author-supplied track (§1.4), so the "three tiers" this was written for never materialised. Cues are `{t_ms, dur_ms, ja, segs?}` and there is only one producer of them — two, since 1.7.0 added the subtitle-file reader, which emits the same shape minus `segs`.
 - [x] **Re-segment into translation units.** Built in `segment.js`, and it turned out to be the subtlest part of the project. Working at cue level cannot win, because the two content profiles need opposite treatment: cues are exploded into sentence pieces, then pieces accumulate until sentence-final punctuation, a 2 s silence, or a 64-character cap. One rule, both shapes — 131 cues → 78 units on a fragmented video (merging), 202 → 235 on a sentence-dense one (splitting).
 - [x] **Sentence breaks land on real timestamps.** YouTube's json3 carries word-level timings (`tOffsetMs`) on roughly half of all cues, which the first implementation discarded and replaced with a character-count estimate. Switching to the real timings moved 22 of 78 unit starts, the worst by 4.3 s, and cut out-of-order units on a long video from **172 to 0**.
-- [ ] Restore punctuation and sentence boundaries for Tier 2 input (§1.2)
-- [ ] Chunk into requests: ~20 lines per request with ~10 lines of preceding overlap for context
-- [ ] Decide chunk boundaries on sentence boundaries, never mid-clause
+- [x] ~~Restore punctuation and sentence boundaries for Tier 2 input~~ — **not needed.** Japanese auto-captions arrive punctuated; the assumption behind this line was simply wrong (§1.3). It resurfaced for Korean, where the punctuation is present but uses the ASCII period the segmenter did not recognise (§8.2).
+- [x] **Chunk into requests** — built in `chunk.js`. 20 units per request, 10 units of preceding and 6 of following context (§3.2). The window sizes were chosen rather than derived; that is still open.
+- [x] **Chunk boundaries never land mid-clause** — free, and not by separate effort: chunking operates on units, and units are already sentence-bounded by §2's segmenter. The one time this was nearly lost was the rejected proposal to shrink source units, which would have raised mid-sentence splits from 324 to 466 (§Questions).
 
 ---
 
@@ -198,38 +226,39 @@ Measured on a 7h53m VTuber archive (`EmteTL5Ij8g`, 28,382 s):
 
 Having the whole transcript up front makes a first pass possible, and it is where most of the quality comes from:
 
-- [ ] **Pass 1 — analysis (once per video).** Read the full transcript and extract: character names and how they are written, speaker roles and relationships, recurring terms and in-jokes, register per speaker, and the domain. Output a compact glossary.
-- [ ] **Pass 2 — translation (per chunk).** Translate with that glossary as the cached prefix.
-- [ ] Pass 1 costs one request over a long input and pays for itself immediately in consistency — the same name rendered three different ways across an episode is the most obvious tell of a machine translation.
+- [x] **Pass 1 — analysis (once per video).** Built. Also had to be *bounded*: the transcript is sampled evenly across the video down to 6,000 characters, because a four-hour archive is ~75,000 and an over-long prompt fails as a truncated, unparseable reply rather than a clear error. Sampling evenly rather than taking a prefix is what keeps names from the end of the video in the glossary.
+- [x] **Pass 2 — translation (per chunk).** Built. The "cached prefix" framing did not survive the move to a local model — see §3.4.
+- [x] Pass 1 pays for itself in consistency, as predicted. It also did something **not** predicted: it repairs ASR errors. 高感度イベント is a homophone of 好感度イベント and only one is meaningful in a farming sim — but you have to know it is a farming sim, which is exactly what pass 1 establishes.
+- [x] **Pass 1 must never be load-bearing for the run.** Learned the hard way: a malformed reply used to throw and abort everything, so one bad JSON response cost every subtitle rather than just the glossary. It now retries three times, warns loudly, and translates with an empty glossary.
 - [x] ~~Fold punctuation restoration into pass 1~~ — not needed; YouTube's Japanese ASR output is already punctuated (§1.3)
 
 ### 3.2 Context — the VOD advantage
 
 Under the real-time design, context was a backwards-looking rolling window and pronoun resolution was guesswork. Here the model can see **ahead** as well as behind.
 
-- [ ] Include following lines as well as preceding ones in each chunk
-- [ ] This is the single biggest quality win available for Japanese: a dropped subject is frequently disambiguated by what comes *next*, which a live pipeline can never see
-- [ ] Tune the window sizes; they are cheap here, unlike in the live design
+- [x] **Include following lines as well as preceding ones** — built; the prompt labels them explicitly as context not to be translated, and says *why* they help, which the model otherwise ignores
+- [x] This is the single biggest quality win available for Japanese, and it held. It is what separates this from YouTube's per-cue translation, and it is the direct cause of the polarity-inversion category being fixed here and broken there.
+- [ ] **Tune the window sizes.** Still not done. 10 before / 6 after was chosen, not derived, and has never been varied against a fixture.
 
 ### 3.3 Japanese-specific translation problems
 
 These remain the top quality risks.
 
-- [ ] **Pro-drop.** Japanese omits subjects constantly, and unlike Spanish there is no verb agreement to recover person from. 「行った」 is "I / you / he / she / they went" with no marking at all. English forces a pronoun on nearly every line, and a wrong guess is visible and jarring. §3.2's forward context and §3.1's speaker map are the mitigations.
-- [ ] **Recover person from honorifics, not just context.** Giving and receiving verbs and keigo encode direction: 「くれる」 (someone did it for me) vs 「あげる」 (I did it for someone); humble forms mark the speaker, honorific forms mark the addressee. Teach these in the system prompt — they resolve many pronouns that surrounding lines cannot.
-- [ ] **Verb-final word order (SOV).** Negation, tense, and politeness land on the final morphemes. Never split a chunk mid-clause (§2).
-- [ ] **Role language (役割語).** Fiction encodes character through speech style — pronoun choice (`俺` / `僕` / `私` / `わし`), sentence-ending particles, dialect. Flattening every character into neutral English loses most of the characterisation. Decide how much to attempt; the §3.1 speaker map makes it achievable.
-- [ ] **Register.** Casual / polite / humble / honorific are grammatically marked in Japanese and only lexically available in English. Define a consistent mapping rather than letting it drift.
-- [ ] **Sentence-boundary mismatch.** Japanese and English clause order differ enough that a strict one-in-one-out mapping reads badly. Allow merging and splitting, and remap timings accordingly (§5.2).
+**Every one of these is now a numbered rule in `prompt.js`, each traceable to a
+failure category measured on YouTube's output. They did not all work equally.**
+
+- [ ] **Pro-drop.** Japanese omits subjects constantly, and unlike Spanish there is no verb agreement to recover person from. 「行った」 is "I / you / he / she / they went" with no marking at all. **Rule written, problem not solved.** This is the one category still lost to YouTube: 「あ、寝ちゃった。」 → "I fell asleep" where the thing that fell asleep is on screen and nowhere in the text. Forward context helps and is not sufficient — the referent is often visual. May need vision. Korean gets a partial answer for free (§8.3).
+- [x] **Recover person from honorifics.** Taught explicitly in the prompt: 「くれる」 (someone did it for me) vs 「あげる」 (I did it for someone), humble forms marking the speaker, honorific forms the addressee. Resolves pronouns that surrounding lines cannot.
+- [x] **Verb-final word order (SOV).** The rule tells the model that if a line's meaning depends on a clause finishing in a later line, the pair must read correctly together and must never assert the opposite. This is the fix for the single worst baseline failure — YouTube stating the negation of what was said (§7).
+- [x] **Role language (役割語).** Attempted via the §3.1 register field rather than per-pronoun mapping. Honestly: the least verifiable thing here. Whether characterisation survives is exactly the judgement an author-scored evaluation cannot make.
+- [x] **Register.** Captured as a per-video field in pass 1 and carried into every chunk, so it is at least *consistent* across a video, which was the failure worth preventing.
+- [x] **Sentence-boundary mismatch.** Merging and splitting allowed, with timings remapped from word-level data (§5.2). Solved at the renderer rather than the pipeline — display-time splitting took over-84-character lines from 5.9% to 0.1%, where shrinking source units was measured and rejected.
 
 ### 3.4 Request design and caching
 
-- [ ] System prompt: domain, register, output format constraints; suppress preamble and commentary
-- [ ] Return structured output (line ID → translation) so lines can be remapped to timings reliably rather than by position
-- [ ] **Cached prefix: the §3.1 glossary**, which is per-video and stable for the whole run — an ideal cache prefix, reused across every chunk request
-- [ ] Keep the glossary at the front and the per-chunk lines after the last cache breakpoint
-- [ ] Verify with `usage.cache_read_input_tokens`; if it is zero across chunks, something in the prefix is varying
-- [ ] Continuous chunk requests keep the default 5-minute TTL warm, so the 1.25× write is paid once per video and the 1-hour TTL buys nothing
+- [x] **System prompt: domain, register, output format constraints; suppress preamble and commentary.** Built, and the output-format constraints needed to be far harsher than anticipated — pass 1 once returned 22,129 characters of what was effectively a full translation instead of a reference sheet. Hard caps on entry counts and total length took it to 981 characters and cut the run time 24.5 s → 18.3 s.
+- [x] **Return structured output (line ID → translation)** so lines remap by ID, never by position. Since extended to *copy-then-translate*: the model echoes each line's Japanese before its English, which stops translations sliding onto neighbouring lines on fragmented speech.
+- [x] ~~Cached prefix: the §3.1 glossary~~ / ~~keep it before the last cache breakpoint~~ / ~~verify with `usage.cache_read_input_tokens`~~ / ~~5-minute TTL warmth~~ — **all four dropped, moot.** These are Anthropic prompt-caching mechanics and there is no such API in the local path. The glossary is still sent with every chunk; it is simply re-read each time, and at local-inference speeds that costs nothing worth optimising. Kept here because the *reasoning* was sound for the design it was written against.
 
 ### 3.5 Whole-transcript single pass — not available locally
 
@@ -266,57 +295,88 @@ What was kept from the idea:
 
 ## Stage 5 — Rendering
 
+**Built, and the hardest stage to get right.** Rendering was written once and
+did not work at all on the first real run — four separate defects, none of
+which produced an error. See the note at the end of this stage.
+
 ### 5.1 Surface
-- [ ] Overlay div in a shadow DOM, anchored to the YouTube player
-- [ ] Survives fullscreen and theatre mode
-- [ ] Hide during ads
-- [ ] User-configurable position and appearance
+- [x] Overlay div in a shadow DOM, anchored to the YouTube player
+- [x] Survives fullscreen and theatre mode — free, because the overlay is anchored to the *player* element rather than the page, and that is what goes fullscreen
+- [x] Hide during ads — ads play in the same `<video>`, so without this an ad read gets subtitled
+- [ ] **User-configurable position and appearance.** Not built. Nobody has asked, and the defaults have not been a complaint.
 
 ### 5.2 Display logic
-- [ ] Drive from the video's `currentTime`; resolve the active cue by timestamp so seeking works instantly
-- [ ] Reading-speed sanity check (~20 chars/sec, max two lines) — English renderings of dense Japanese lines can overrun their cue
-- [ ] Timing remap when translation merges or splits lines (§3.3)
-- [ ] Minimum dwell time, so a rapid exchange does not flicker
-- [ ] Optional dual display: Japanese source above the English translation
+- [x] Drive from the video's `currentTime`; resolve the active cue by timestamp so seeking works instantly. Binary search over a sorted list; a seek costs nothing and cannot strand a stale cue
+- [x] Reading-speed sanity check — dwell scales with text length between a 500 ms floor and a 6 s ceiling
+- [x] Timing remap when translation merges or splits lines (§3.3) — sentence splits anchored to YouTube's word-level `tOffsetMs`, which moved 22 of 78 unit starts and took out-of-order units on a long video from 172 to 0
+- [x] Minimum dwell time, so a rapid exchange does not flicker
+- [ ] **Optional dual display: Japanese above English.** Not built. The overlay never receives the Japanese — only `{t_ms, end_ms, en}` reaches it — so this is a cache-shape change, not a rendering one.
 
 ### 5.3 Styling
-- [ ] Font, size, outline/shadow for legibility over video
-- [ ] Do not collide with YouTube's own caption container
+- [x] Font, size, outline/shadow for legibility over video
+- [x] Do not collide with YouTube's own caption container — the progress box sits top-right, clear of the subtitle band, and YouTube's own captions are switched back off after being borrowed
+
+> **Written, then found not to work — the most useful failure in the project.**
+> The first run produced no subtitles and no errors. Four defects at once: a
+> `requestAnimationFrame` loop that fired zero times per second because the tab
+> was considered idle, an early return on a stale cue, silently dropped units,
+> and swallowed delivery errors. The render loop is now a plain 100 ms
+> `setInterval`, and `send()` reports undeliverable messages instead of
+> discarding them. The lesson that stuck: **every one of these reported
+> success.** Silent success is the failure mode this codebase has to be
+> designed against, and it is why the empty-200 guard (§1.1) and the
+> analysis-pass warning (§3.1) exist in the form they do.
 
 ---
 
 ## Stage 6 — Cost, Fallback, and Failure
 
-- [ ] Token accounting per video; validate against the §0.4 prediction
-- [ ] Show estimated cost **before** translating a long archive — an eight-hour VOD is not a nine-cent anime episode
-- [ ] Model selector, with per-video cost shown where the backend charges per token
+**This whole stage was largely dissolved by moving to a local model.** Cost
+accounting is the bulk of it, and there is no cost.
+
+- [x] ~~Token accounting per video~~ — **dropped, moot.** Local inference is free; the only budget is time, and the ETA covers it.
+- [x] ~~Show estimated cost before translating a long archive~~ — **dropped, moot**, same reason. Replaced by a remaining-time estimate, which is the scarce resource now.
+- [x] **Model selector** — built. The per-video cost half is moot; the picker itself turned out to matter for a different reason, as the only real speed lever on weak hardware.
 - [x] **Backend: local Qwen3.5 through Ollama.** Gemini was the planned first choice but was never needed — Qwen cleared the quality bar on the first run. The Gemini backend exists in code and remains **unverified**. Setup: [docs/translation-backends.md](docs/translation-backends.md).
-- [ ] This reverses the earlier decision to drop a second backend. That reasoning was cost-based and is now moot — the constraint is **access**, not price. Two real backends justify a thin seam between "produce translation units" and "call a model"; keep it to one function, not a plugin architecture.
-- [ ] The quality result in [eval/README.md](eval/README.md) came from the **two-pass method**, not from any particular model. Re-run the fixtures against whichever backend ships before trusting it.
+- Note, not a task: this reversed the earlier decision to drop a second backend. That reasoning was cost-based and is now moot — the constraint is **access**, not price. The seam stayed one function per backend rather than a plugin architecture, and that has held.
+- [ ] The quality result in [eval/README.md](eval/README.md) came from the **two-pass method**, not from any particular model. Re-run the fixtures against whichever backend ships before trusting it. **Still outstanding** — only Qwen3.5 has ever been scored.
 
 ### 6.1 Degradation behaviour
 
-- [ ] No Japanese caption track and ASR unavailable → say so plainly rather than failing silently
-- [ ] `timedtext` returns an empty 200 (§1.1) → this is a **refusal, not an empty video**. Detect it explicitly, report it, and fall through to ASR. Never present it as success.
+- [x] No Japanese caption track → said plainly. There is no ASR fallback to be unavailable, so the message states the real limit rather than implying a retry.
+- [x] `timedtext` returns an empty 200 (§1.1) → detected explicitly and reported as a **refusal, not an empty video**. The "fall through to ASR" half was **dropped**: no ASR path was ever built, so the honest behaviour is to say the track cannot be read.
 - [x] Ollama unreachable or refusing (403 on an unknown origin) → reported with the fix, not a bare status code
 - [x] Analysis pass fails → degrade to an empty glossary and translate anyway. It used to abort the whole run, so one bad reply cost every subtitle.
-- [ ] Translation falls behind the playhead → show the gap honestly
-- [ ] Network drops mid-video → resume from the last completed chunk, never restart
-- [ ] Never leave a stale subtitle on screen after a seek
+- [x] ~~Translation falls behind the playhead~~ → **dropped, moot.** At 28× real time the playhead never catches up. It is the opposite problem on CPU-only machines, where the whole run finishes before playback starts being worth it — handled by reporting progress honestly, not by tracking a gap.
+- [ ] **Network drops mid-video → resume from the last completed chunk.** Not built, and the current behaviour is deliberate rather than accidental: a partial translation is never cached, because a half-finished run that looks complete on the next visit is worse than one that plainly failed. Resuming properly needs a partial-cache shape that records *which* chunks are done. The retry logic inside a chunk (two re-asks for missing lines) covers the common case; a dropped connection mid-run does not.
+- [x] Never leave a stale subtitle on screen after a seek — falls out of resolving the cue from `currentTime` every tick rather than advancing a cursor
 
 ---
 
 ## Stage 7 — Evaluation
 
-- [ ] Reference set: ~10 minutes of Japanese video with human English subtitles, covering **both** profiles — one anime clip, one VTuber clip
-- [ ] Build the reference set during build step 1 — it is the only way to tell whether a prompt change helped
-- [ ] Score transcript-only and translation-only separately to isolate failures
-- [ ] Track **pronoun-resolution accuracy** as its own metric — the failure mode most visible to a viewer (§3.3)
-- [ ] Track **name and term consistency** across a whole video — the second most visible, and what §3.1 exists to fix
-- [ ] **Baseline to beat: YouTube's own auto-translated English captions.** Observed during §1 testing — YouTube will auto-translate the Japanese ASR track to English natively, for free, with one click. That is the honest comparison, not "subtitles vs. no subtitles". If this project does not clearly beat it on pronoun resolution, names, and register, it has no reason to exist. Put it in the reference set as a scored competitor from day one.
-- [ ] Compare inputs: does an auto-generated caption track plus a strong model beat proper ASR plus the same model?
-- [ ] Compare models on the same transcript — the popup's model picker makes this easy to try
-- [ ] Prompt version comparison harness
+**The weakest stage, and knowingly so.** The baseline comparison was built and
+is the spine of [eval/README.md](eval/README.md). The human reference — the
+thing that would make any of it independent — was not, and everything
+downstream of it is still open.
+
+- [ ] **Reference set: ~10 minutes with human English subtitles, both profiles.** **Parked, blocked on a Japanese reader.** Attempted and abandoned for a good reason: a reference supplied by the same party that produced one of the outputs is circular even after correction, so a wrong reference is worse than none. Kept in [eval/reference/](eval/reference/).
+- [x] ~~Build the reference set during build step 1~~ — did not happen, and the ordering advice was sound: prompt changes since have been justified by fixture diffs and counting, not by a score.
+- [ ] Score transcript-only and translation-only separately — not done
+- [ ] Track **pronoun-resolution accuracy** as its own metric — exists as a category in the taxonomy, not as a measured number
+- [ ] Track **name and term consistency** across a whole video — same: described, not counted. §3.1 is justified by the failure it prevents, not by a metric.
+- [x] **Baseline to beat: YouTube's own auto-translated English captions.** Built, and it is the one part of this stage that worked as intended. A 131-cue window with YouTube's English aligned 1:1, and a seven-category failure taxonomy drawn from it. **Caveat that must travel with every number:** scored in-house, against a taxonomy written by the same party that produced one of the outputs.
+- [x] ~~Compare inputs: auto-captions plus a strong model vs. proper ASR plus the same model~~ — **dropped.** Moot for the shipped tool, which has no ASR path (§6.1). It would be a question about a different product.
+- [ ] Compare models on the same transcript — the picker makes it easy, and it still has not been done. Only Qwen3.5 has been scored.
+- [ ] Prompt version comparison harness — not built. Prompt changes are currently justified by running fixtures and reading the diff by hand, which caught the pass-1 runaway (22,129 chars → 981) but does not scale.
+
+> **What the evaluation actually rests on.** Strip out what is unmeasured and
+> the honest claim is narrow: against one competitor, on two fixtures, scored
+> by the author. The structural findings are solid because they are counted —
+> unit lengths, out-of-order units, over-long lines, cue-boundary splits. The
+> *quality* claims are not independent and are labelled as such wherever they
+> appear. Korean (§8) is in better shape on this axis by accident: much of
+> YouTube's damage there is visible in the English alone.
 
 ---
 
