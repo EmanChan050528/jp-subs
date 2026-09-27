@@ -36,6 +36,41 @@ that doesn't match its line is rejected and asked for again.
 
 ---
 
+## 1.11.0 — Ollama health check
+
+Ollama is a separate program people close, and the old failure mode was to
+start a run, extract the whole transcript, and only then hit the model call and
+die. The popup now probes before anything starts and disables **Translate**
+until the backend is actually usable.
+
+Four states, because they need four different fixes and collapsing them sent
+people to reinstall something already running:
+
+| State | Fix offered |
+|---|---|
+| Not running | `ollama serve` |
+| Running, refused (403) | the `OLLAMA_ORIGINS` line for your platform |
+| Running, no models | `ollama pull qwen3.5:9b` |
+| Selected model missing | `ollama pull <that model>` |
+
+Each comes with a **Copy command** button and a **Check again** button, so
+starting Ollama and retrying does not mean reopening the popup.
+
+**There is no "start Ollama" button, and there cannot be.** A web page cannot
+launch a local program — that is a browser security boundary, not an
+oversight. Copying the command is the nearest honest thing. Doing it properly
+would need a native messaging host, which is a separate program to install,
+which is the problem it would be solving.
+
+The check runs *after* the cache lookup, so a video that is already translated
+still shows its subtitles with Ollama closed.
+
+Fixes a latent bug found while wiring this: the run-state poll called the
+**language** gate, so a poll could re-arm Translate for a language that cannot
+be translated. Language, run state and backend health are now three separate
+flags behind one paint function, rather than three writers racing on
+`disabled`.
+
 ## 1.10.0 — Korean translation
 
 Step 3, and Korean now translates. **Its quality has not been checked by a

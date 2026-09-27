@@ -228,6 +228,102 @@ function toOverlayUnits(units, translations) {
     .filter((u) => u.en);
 }
 
+// ------------------------------------------------------------ ollama health
+//
+// Ollama is a separate program the user has to have running, and there is no
+// way for the extension to start it — a page cannot launch a local process,
+// by design. So the next best thing is to fail early and specifically: say
+// which of the four things is wrong and give the one command that fixes it,
+// before a run starts rather than partway through.
+
+const PULL_SUGGESTION = "ollama pull qwen3.5:9b";
+
+/** The OLLAMA_ORIGINS incantation differs per platform; guess from the UA. */
+function originsCommand() {
+  const ua = (typeof navigator !== "undefined" && navigator.userAgent) || "";
+  if (/Windows/i.test(ua)) return 'setx OLLAMA_ORIGINS "chrome-extension://*"';
+  if (/Mac OS X|Macintosh/i.test(ua)) return 'launchctl setenv OLLAMA_ORIGINS "chrome-extension://*"';
+  return 'OLLAMA_ORIGINS="chrome-extension://*" ollama serve';
+}
+
+/**
+ * Classify what is wrong with Ollama, if anything.
+ *
+ * The four states need four different fixes, and collapsing them into
+ * "Ollama unreachable" sent people to reinstall something that was already
+ * running. `forbidden` in particular looks like a network failure and is not.
+ */
+async function ollamaStatus() {
+  const config = await loadSettings();
+  const host = config.host;
+
+  // A wrong host can hang rather than refuse, so never wait indefinitely on
+  // what is meant to be a fast pre-flight check.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4000);
+
+  let res;
+  try {
+    res = await fetch(`${host}/api/tags`, { signal: controller.signal });
+  } catch {
+    return {
+      state: "unreachable",
+      host,
+      message: `Ollama is not running at ${host}.`,
+      fix: "Start it, then check again.",
+      command: "ollama serve",
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (res.status === 403) {
+    return {
+      state: "forbidden",
+      host,
+      message: "Ollama is running but refused the extension (403).",
+      fix:
+        "It only accepts requests from origins in OLLAMA_ORIGINS, which does " +
+        "not include browser extensions by default. Set it, then fully quit " +
+        "and restart Ollama — the variable is only read at startup.",
+      command: originsCommand(),
+    };
+  }
+
+  if (!res.ok) {
+    return {
+      state: "error", host, http: res.status,
+      message: `Ollama answered HTTP ${res.status}.`,
+      fix: "Check the Ollama logs.",
+    };
+  }
+
+  const data = await res.json().catch(() => ({}));
+  const models = (data.models || []).map((m) => m.name).sort();
+
+  if (!models.length) {
+    return {
+      state: "no-models",
+      host, models,
+      message: "Ollama is running but has no models installed.",
+      fix: "Pull one, then check again.",
+      command: PULL_SUGGESTION,
+    };
+  }
+
+  const selected = config.model;
+  const selectedInstalled = models.includes(selected);
+  return {
+    state: selectedInstalled ? "ok" : "missing-model",
+    host, models, selected, selectedInstalled,
+    message: selectedInstalled
+      ? `${models.length} model${models.length === 1 ? "" : "s"} available.`
+      : `The selected model "${selected}" is not installed.`,
+    fix: selectedInstalled ? null : "Pick another in Settings, or pull it.",
+    command: selectedInstalled ? null : `ollama pull ${selected}`,
+  };
+}
+
 /** Tabs whose in-flight run has been abandoned (the viewer navigated away). */
 const cancelled = new Set();
 
@@ -272,6 +368,18 @@ async function translateTab(tabId, { force = false } = {}) {
       });
       return { units: hit.units.length, failures: [], fromCache: true };
     }
+  }
+
+  // Check Ollama before doing any work, but AFTER the cache lookup above: a
+  // video that is already translated should still show its subtitles with
+  // Ollama closed. Failing here costs a moment; failing at the first model
+  // call costs the whole extraction first.
+  const health = await ollamaStatus();
+  if (health.state !== "ok") {
+    throw new Error(
+      [health.message, health.fix, health.command && `\n  ${health.command}`]
+        .filter(Boolean).join(" ")
+    );
   }
 
   await send(tabId, { type: "overlay:status", text: "Getting transcript…" });
@@ -547,6 +655,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         terms: Object.keys(g.terms || {}).length,
       } }))
       .catch(() => sendResponse({ ok: true, data: null }));
+    return true; // async
+  }
+
+  if (msg?.type === "ollama:check") {
+    ollamaStatus()
+      .then((data) => sendResponse({ ok: true, data }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true; // async
   }
 

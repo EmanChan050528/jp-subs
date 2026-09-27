@@ -112,6 +112,7 @@ function loadSubtitles(name, text) {
   $("facts").hidden = false;
   $("controls").hidden = false;
   $("context").value = name.replace(/\.[^.]+$/, "").replace(/[._]+/g, " ");
+  paintGo();   // a file alone is not enough; Ollama has to be up too
 
   // Say which language was found, not merely that it is not Japanese. A
   // Korean file is a real subtitle file and the reader is not confused; the
@@ -154,6 +155,14 @@ $("drop").addEventListener("drop", (e) => {
 
 // ------------------------------------------------------------------ settings
 
+/** Same gate as the popup: no backend, no run. */
+let ollamaReady = false;
+
+function paintGo() {
+  // `cues` is set by the file reader; both have to be true.
+  $("go").disabled = !ollamaReady || !cues;
+}
+
 async function fillSettings() {
   const config = await loadSettings();
   $("host").value = config.host;
@@ -161,6 +170,12 @@ async function fillSettings() {
   const select = $("model");
   try {
     const res = await fetch(`${config.host}/api/tags`);
+    if (res.status === 403) {
+      throw new Error(
+        `Ollama refused the request (403). Set OLLAMA_ORIGINS to include ` +
+        `chrome-extension://* and restart it.`
+      );
+    }
     if (!res.ok) throw new Error(`Ollama returned HTTP ${res.status}`);
     const data = await res.json();
     const models = (data.models || []).map((m) => m.name).sort();
@@ -169,6 +184,8 @@ async function fillSettings() {
     if (!models.length) {
       select.innerHTML = '<option value="">(none installed)</option>';
       $("modelNote").textContent = "Pull one first, e.g. ollama pull qwen3.5:9b";
+      ollamaReady = false;
+      paintGo();
       return;
     }
     for (const name of models) {
@@ -183,11 +200,34 @@ async function fillSettings() {
     } else {
       $("modelNote").textContent = "Smaller models are faster and less accurate.";
     }
+    ollamaReady = true;
   } catch (err) {
     select.innerHTML = `<option value="${config.model}">${config.model}</option>`;
     $("modelNote").textContent = `Could not list models: ${err.message}`;
+    ollamaReady = false;
+    message(
+      `Ollama is not available, so nothing can be translated yet. ${err.message} ` +
+      `Start it, then press "Check Ollama again".`,
+      "err"
+    );
   }
+  paintGo();
 }
+
+$("recheck").addEventListener("click", async () => {
+  const b = $("recheck");
+  b.disabled = true;
+  const label = b.textContent;
+  b.textContent = "Checking…";
+  try {
+    message("");
+    await fillSettings();
+    if (ollamaReady) message("Ollama is ready.", "ok");
+  } finally {
+    b.textContent = label;
+    b.disabled = false;
+  }
+});
 
 $("model").addEventListener("change", (e) =>
   chrome.storage.local.set({ model: e.target.value })

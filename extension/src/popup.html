@@ -91,6 +91,16 @@
   <div id="title"></div>
   <dl id="facts"></dl>
 
+  <div id="ollama" hidden>
+    <div id="ollamaMsg"></div>
+    <div id="ollamaFix" class="note"></div>
+    <code id="ollamaCmd" hidden></code>
+    <div class="row">
+      <button id="ollamaCopy" class="secondary" hidden>Copy command</button>
+      <button id="ollamaRetry" class="secondary">Check again</button>
+    </div>
+  </div>
+
   <progress id="bar"></progress>
   <button id="go" disabled>Translate &amp; show subtitles</button>
   <button id="stop" class="secondary" hidden>Stop translating</button>

@@ -336,6 +336,16 @@ Full scoring, including the cases this project still gets wrong, is in
 
 ## Troubleshooting
 
+**The popup says Ollama is not running, or has no models** — the extension
+checks before it starts, so this appears instead of a run that dies partway.
+It names which of the four things is wrong and gives the command that fixes
+it, with **Copy command** and **Check again** next to it. Start Ollama, press
+**Check again**, and **Translate** re-arms.
+
+There is deliberately no button that starts Ollama for you: a web page cannot
+launch a program on your machine. That is a browser security rule, not a
+missing feature.
+
 **"Ollama refused the request (403)"** — step 2 was missed, or Ollama was not
 restarted afterwards.
 

@@ -33,6 +33,33 @@ async function withFeedback(button, busyLabel, fn) {
  * classic script with no module system. Keep the two in step — the worker's
  * copy is the one that actually gates a run.
  */
+/**
+ * Ollama is a separate program, and people close it. Two independent things
+ * have to be true before a run can start — a translatable language, and a
+ * healthy backend — so both are tracked and every enable goes through one
+ * place. Setting `goButton.disabled` directly is how the two gates used to
+ * overwrite each other.
+ */
+let ollamaReady = false;   // Ollama reachable, with the chosen model installed
+let langReady = false;     // this video's captions are in a language we translate
+let runBlocks = false;     // a run is going, or this video is already done
+
+function paintGo() {
+  goButton.disabled = runBlocks || !langReady || !ollamaReady;
+}
+
+/** Called by the language detection only. */
+function setGoEnabled(enabled) {
+  langReady = enabled;
+  paintGo();
+}
+
+/** Called by the run-state poll only. */
+function setRunBlocks(blocked) {
+  runBlocks = blocked;
+  paintGo();
+}
+
 const LANG_LABEL = { ja: "Japanese", ko: "Korean" };
 const TRANSLATABLE = new Set(["ja", "ko"]);
 /** Languages whose translation quality has never been independently checked. */
@@ -120,6 +147,66 @@ async function loadSettings() {
  * 14.0 s) — the cost is generating output tokens, which chunking does not
  * change.
  */
+/**
+ * Probe Ollama and show what is wrong, if anything.
+ *
+ * Deliberately NOT a single "Ollama unreachable" message: running-but-refused
+ * (403) looks identical to not-running from the extension's side, and the
+ * fixes are completely different. Each state carries its own command.
+ *
+ * There is no "start Ollama" button because a web page cannot launch a local
+ * program — that is a browser security boundary, not an oversight. Copying
+ * the command is the nearest honest thing.
+ */
+async function checkOllama() {
+  const box = $("ollama");
+  const res = await chrome.runtime.sendMessage({ type: "ollama:check" });
+  const d = res?.ok ? res.data : null;
+
+  ollamaReady = d?.state === "ok";
+  paintGo();   // the probe lands after the first paint, so repaint here
+
+  if (!d) {
+    box.hidden = false;
+    $("ollamaMsg").textContent = res?.error || "Could not check Ollama.";
+    $("ollamaFix").textContent = "";
+    $("ollamaCmd").hidden = true;
+    $("ollamaCopy").hidden = true;
+    return;
+  }
+
+  if (ollamaReady) {
+    box.hidden = true;
+    return;
+  }
+
+  box.hidden = false;
+  $("ollamaMsg").textContent = d.message;
+  $("ollamaFix").textContent = d.fix || "";
+  $("ollamaCmd").textContent = d.command || "";
+  $("ollamaCmd").hidden = !d.command;
+  $("ollamaCopy").hidden = !d.command;
+}
+
+$("ollamaRetry").addEventListener("click", () =>
+  withFeedback($("ollamaRetry"), "Checking…", async () => {
+    await checkOllama();
+    await loadModels();
+    // The language gate may also have been the thing blocking the button, so
+    // re-run the detection rather than assuming Ollama was the only problem.
+    await refreshRunState();
+    if (ollamaReady) show("Ollama is ready.", "ok");
+  }));
+
+$("ollamaCopy").addEventListener("click", () =>
+  withFeedback($("ollamaCopy"), "Copied", async () => {
+    try {
+      await navigator.clipboard.writeText($("ollamaCmd").textContent);
+    } catch {
+      show("Could not copy — select the command and copy it by hand.", "err");
+    }
+  }));
+
 async function loadModels() {
   const select = $("model");
   const res = await chrome.runtime.sendMessage({ type: "models:list" });
@@ -324,7 +411,7 @@ async function refreshRunState() {
     // started it. Reopening the popup mid-run used to render one frozen
     // snapshot and never update — which looked exactly like a hang.
     if (!poll) poll = setInterval(refreshRunState, 500);
-    goButton.disabled = true;
+    setRunBlocks(true);
     saveButton.disabled = true;
     // Stopping takes effect at the next chunk boundary, so say so rather than
     // leaving the button looking unresponsive for a few seconds.
@@ -364,11 +451,13 @@ async function refreshRunState() {
     // Nothing is gained by running it again on the same video, and a second
     // run would burn several minutes of local inference. Offer it explicitly
     // rather than leaving the primary button armed.
-    goButton.disabled = true;
+    setRunBlocks(true);
     goButton.textContent = "Subtitles applied";
     againButton.hidden = false;
   } else {
-    goButton.disabled = false;
+    // Run state only. This used to call the LANGUAGE gate, which meant a poll
+    // could re-arm the button for a language that cannot be translated.
+    setRunBlocks(false);
     goButton.textContent = GO_LABEL;
     againButton.hidden = true;
   }
@@ -400,6 +489,11 @@ async function init() {
   await loadSettings();
   loadModels();   // not awaited: never let a slow Ollama hold up the UI
   refreshCache();
+
+  // Also not awaited — an unreachable host takes up to 4 s to give up, and
+  // the rest of the panel should not wait on it. The button starts disabled
+  // and paintGo() re-runs when the probe lands.
+  checkOllama();
 
   const tab = await activeTab();
   tabId = tab?.id;
@@ -453,7 +547,7 @@ async function init() {
     // Extracting is language-agnostic, so "Save transcript only" stays live
     // even when the language cannot be translated yet.
     saveButton.disabled = false;
-    goButton.disabled = !translatable;
+    setGoEnabled(translatable);
 
     if (!translatable) {
       show(
@@ -541,7 +635,7 @@ stopButton.addEventListener("click", async () => {
 
 async function startRun({ force = false } = {}) {
   srtButton.hidden = true;
-  goButton.disabled = true;
+  setRunBlocks(true);
   againButton.hidden = true;
   stopButton.hidden = false;
   stopButton.disabled = false;
@@ -558,7 +652,7 @@ async function startRun({ force = false } = {}) {
   if (res && !res.ok) {
     stopPolling();
     show(res.error, "err");
-    goButton.disabled = false;
+    setRunBlocks(false);
     goButton.textContent = GO_LABEL;
     saveButton.disabled = false;
     stopButton.hidden = true;
