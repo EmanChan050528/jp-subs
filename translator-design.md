@@ -21,12 +21,40 @@ A browser extension that takes a YouTube video, obtains a Japanese transcript, t
 - **Source: Japanese.** Chinese and Korean were raised as possible later additions, but nothing in this design should be built to accommodate them — the §3.3 handling is Japanese-specific and would not transfer anyway. Add them, if ever, as a separate prompt and a separate evaluation.
 - **Target: English.**
 
+> **Half right, and the wrong half was the expensive one.** Measured against a
+> real Korean track in [eval/korean-findings.md](eval/korean-findings.md).
+>
+> Right: §3.3 does not transfer, and Korean needs its own prompt and its own
+> evaluation.
+>
+> Wrong: this treated language as *only* a prompt question. It is not. The
+> **mechanics** are coupled to Japanese in places nobody chose deliberately —
+> the sentence-end class carries the fullwidth period but not the ASCII one
+> Korean uses, `segment()` joins cues with no separator because Japanese has no
+> spaces, and the language check added later scores hangul at zero. None of
+> these were design decisions; they are Japanese leaking into code that reads
+> as general. Each is a one-line fix, but only once someone looks.
+>
+> Also never asked: **does the premise transfer?** It does. YouTube's Korean →
+> English is damaged in the same way and by a worse mechanism (§8).
+
 ### 0.2 Platform and content
 
 - **Browser extension (Chrome, Manifest V3).**
 - **YouTube VOD only** — archived anime and VTuber stream archives.
 
 Write against YouTube directly. A generic "transcript source" interface, a pluggable player adapter, or a site-agnostic overlay would all be speculative generality here: there is one host page, one player, and one caption format. Couple to them and keep the code small.
+
+> **Mostly held, with one cheap exception found later.** The player adapter and
+> the site-agnostic overlay were correctly refused — neither was ever built and
+> neither has been missed. But "transcript source" was drawn too widely. In
+> 1.7.0 a `.srt`/`.vtt` **file** input reached every other site at once for the
+> cost of a parser, because a subtitle file is already the shape the
+> interceptor produces. It is not a pluggable source interface: it is one more
+> concrete reader, and the output is a file rather than an overlay. The
+> distinction the original note missed is between *abstracting* the source,
+> which stays refused, and *adding* a second concrete one, which was nearly
+> free.
 
 Because everything runs offline relative to playback, the MV3 service-worker lifetime problem mostly disappears: work is request-shaped and short-lived rather than a persistent capture session. Confirm this holds for long VTuber archives, where a single video's translation may take minutes.
 
@@ -292,6 +320,72 @@ What was kept from the idea:
 
 ---
 
+## Stage 8 — Language Expansion: Korean
+
+**Status: tested, not built.** Measured 2026-09-27 against a 147-minute
+StelLive VOD. Full numbers in [eval/korean-findings.md](eval/korean-findings.md);
+the code-readiness probe is [eval/korean-readiness.mjs](eval/korean-readiness.mjs).
+
+The rule applied here was *test the premise before writing anything*, and it
+paid for itself twice: once by killing the assumption that Korean was only a
+prompt change, and once by finding an advantage Japanese does not have.
+
+### 8.1 The premise transfers, by a worse mechanism
+
+YouTube's Korean → English is damaged in the same family of ways as its
+Japanese, but the mechanism differs. Japanese cues were translated
+*independently*, stranding polarity in the next cue. Korean looks like a cue
+pair translated *jointly* and then re-split by character position — which
+severs words outright. A cue ends `...first of all, do` and the next begins
+`n't dress hip...`; six such splits in ten minutes.
+
+That is §3.3's polarity hazard made worse: in Japanese the negation was in the
+next cue, here it is mid-token. It is also legible **without reading Korean**,
+which matters given §7's unresolved dependency on a human reader.
+
+### 8.2 Korean is a patch, not a redesign
+
+The question that decided this was whether Korean ASR punctuates at all. It
+does — **41.5% of cues end in terminal punctuation against 31.3% for
+Japanese**. Sentence-level segmentation has *more* to work with, not less.
+
+Adding the ASCII period to the sentence-end class is one character and moves
+the median subtitle from 9.0 s on screen to 4.4 s.
+
+### 8.3 Korean has speaker markers, and Japanese does not
+
+**53% of Korean cues begin with `>>`**, the captioning convention for a speaker
+change. The Japanese track has none.
+
+This contradicts a claim made publicly in the README — that YouTube's
+recognition yields one undifferentiated stream with no speaker labels. True of
+Japanese, false here, and it must be qualified by language.
+
+It marks a turn boundary, not an identity. But turn boundaries are most of what
+pro-drop needs, and pro-drop is the one category still lost to YouTube
+(§Questions). **Korean may end up better served than Japanese on the problem
+Japanese cannot solve without vision.**
+
+### 8.4 What it would cost
+
+| Change | Size |
+|---|---|
+| ASCII period in `SENTENCE_END` / `SENTENCE_SPLIT` | one character each |
+| Join cues with a space for spaced languages | small, in `segment()` |
+| Hangul in the `CJK` class | one range |
+| Strip `>>` and use it as a turn boundary | small, and a real quality win |
+| Re-tune `maxChars` for Korean density | needs a fixture run |
+| Korean prompt replacing the §3.3 rules | **the actual work** |
+| Korean evaluation set | blocked on a Korean reader |
+
+### 8.5 Chinese is not next
+
+Nothing here transfers to Chinese. It is SVO, has no honorific system, and the
+§3.3 categories largely do not apply. Korean is cheap *because* it is
+structurally close to Japanese; Chinese is not, and would be a separate design.
+
+---
+
 ## Build Order
 
 **All four steps complete.**
@@ -304,6 +398,14 @@ What was kept from the idea:
 4. ✅ **Pipelining and polish** — result caching, per-channel glossary, progress and ETA, model picker. Ahead-of-playhead scheduling and cost display were dropped as unnecessary (§4.1, §0.4).
 
 Since then: a per-channel glossary that seeds the analysis pass and is editable from the popup, and a bounded LRU cache with pipeline versioning.
+
+5. ✅ **Subtitle files** (1.7.0). `.srt`/`.vtt` in, English `.srt` out, in its own tab. Reaches video outside YouTube for the cost of a parser, because a subtitle file is the same timed-cue shape the interceptor already produces (§0.2). The run lives in the page rather than the service worker, which removes the MV3 lifetime question from that path.
+
+### Next
+
+6. ⬜ **Korean** (§8). Tested, not built. The mechanical fixes are measured and small; the prompt is the real work. Order within it: the one-character segmentation fixes and hangul detection first, since they are provable against the committed fixture; the prompt second; the evaluation set last, because it is the part that blocks on a reader.
+
+Not planned: Chinese (§8.5), a pluggable transcript-source interface (§0.2), ahead-of-playhead scheduling (§4.1), live streams (Appendix A).
 
 ---
 
@@ -318,9 +420,10 @@ Since then: a per-channel glossary that seeds the analysis pass and is editable 
 ## Questions — still open
 
 - [ ] **How much forward context is enough for pronoun resolution?** Never measured. The current 10 before / 6 after was chosen, not derived.
-- [ ] **Is pro-drop solvable at all here?** The one failure category still lost to YouTube. 「あ、寝ちゃった。」 → "I fell asleep" where the thing falling asleep is on screen and nowhere in the text. May need vision rather than more context.
+- [ ] **Is pro-drop solvable at all here?** The one failure category still lost to YouTube. 「あ、寝ちゃった。」 → "I fell asleep" where the thing falling asleep is on screen and nowhere in the text. May need vision rather than more context. **In Korean it may be partly free:** 53% of cues carry a `>>` speaker-change marker (§8.3), which is a turn boundary the Japanese track never provides.
 - [ ] **Does the MV3 worker survive a multi-hour run?** A long translation is ~17 minutes of unbroken fetches. It has worked, but has never been deliberately stress-tested. If it fails, the fix is an offscreen document.
-- [ ] **Are the quality claims real?** Everything in [eval/README.md](eval/README.md) was scored by the same party that produced one of the outputs, against a taxonomy that party wrote. A human reference translation would settle it.
+- [ ] **Are the quality claims real?** Everything in [eval/README.md](eval/README.md) was scored by the same party that produced one of the outputs, against a taxonomy that party wrote. A human reference translation would settle it. Korean inherits this exactly, and the Korean work should not wait on it — §8's findings are all countable.
+- [ ] **Does a `>>` turn boundary actually improve pro-drop?** Korean supplies one for free (§8.3). Whether feeding it to the model helps is unmeasured, and it is the most interesting question the Korean work opens.
 - [x] **Over-long subtitles.** Solved at the renderer, not in the pipeline. 5.9% of lines exceeded two lines; they are now split into sequential display cues across the unit's own span, taking over-84-character lines to 0.1% with no text lost. Shrinking source units was measured and rejected: ~3% slower, but mid-sentence splits rise from 324 to 466, reinventing the polarity failure this project's advantage rests on. Prompt tuning was tried earlier and measurably failed.
 
 ---
