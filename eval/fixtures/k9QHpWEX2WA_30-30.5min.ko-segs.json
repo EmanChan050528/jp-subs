@@ -1,0 +1,21 @@
+{
+  "video_id": "k9QHpWEX2WA",
+  "title": "StelLive talk compilation",
+  "source_lang": "ko",
+  "source": "youtube caption track (kind=asr, lang=ko)",
+  "note": "30:00-30:30, chosen because every cue here carries word-level segs. The .srt fixture has none, so it exercises only the fallback timing path; this one exercises charTimes(), which is what the live extension actually uses for ~40% of this track's events.",
+  "cues": [
+    {"t_ms":1800720,"dur_ms":4000,"ja":"놔주면서 막 계속 쌀라 이래가","segs":[{"text":"놔주면서","t_ms":1800720},{"text":" 막","t_ms":1801240},{"text":" 계속","t_ms":1801320},{"text":" 쌀라","t_ms":1801519},{"text":" 이래가","t_ms":1802039}]},
+    {"t_ms":1802519,"dur_ms":4441,"ja":"짜증나가지고 저 진짜 가야 돼요. 저","segs":[{"text":"짜증나가지고","t_ms":1802519},{"text":" 저","t_ms":1803600},{"text":" 진짜","t_ms":1803840},{"text":" 가야","t_ms":1804039},{"text":" 돼요.","t_ms":1804360},{"text":" 저","t_ms":1804559}]},
+    {"t_ms":1804720,"dur_ms":4240,"ja":"하고 가야 돼요 이랬는데 우리 오늘","segs":[{"text":"하고","t_ms":1804720},{"text":" 가야","t_ms":1804960},{"text":" 돼요","t_ms":1805279},{"text":" 이랬는데","t_ms":1805519},{"text":" 우리","t_ms":1806399},{"text":" 오늘","t_ms":1806720}]},
+    {"t_ms":1806960,"dur_ms":4240,"ja":"우리가 만난 건 우연이 아니에요. 막","segs":[{"text":"우리가","t_ms":1806960},{"text":" 만난","t_ms":1807279},{"text":" 건","t_ms":1807600},{"text":" 우연이","t_ms":1807919},{"text":" 아니에요.","t_ms":1808360},{"text":" 막","t_ms":1808760}]},
+    {"t_ms":1808960,"dur_ms":5079,"ja":"뭐 이랬어. 진짜","segs":[{"text":"뭐","t_ms":1808960},{"text":" 이랬어.","t_ms":1809039},{"text":" 진짜","t_ms":1809399}]},
+    {"t_ms":1811200,"dur_ms":3440,"ja":">> 방탄수는 DNA 가사 줄 알았어.","segs":[{"text":">> 방탄수는","t_ms":1811200},{"text":" DNA","t_ms":1811880},{"text":" 가사","t_ms":1812399},{"text":" 줄","t_ms":1812760},{"text":" 알았어.","t_ms":1812840}]},
+    {"t_ms":1814039,"dur_ms":3561,"ja":"아니지만","segs":[{"text":"아니지만","t_ms":1814039}]},
+    {"t_ms":1814640,"dur_ms":4519,"ja":">> 진짜 저런게 있구나.","segs":[{"text":">> 진짜","t_ms":1814640},{"text":" 저런게","t_ms":1814880},{"text":" 있구나.","t_ms":1816200}]},
+    {"t_ms":1817600,"dur_ms":5120,"ja":">> 아니 나 강해 보고 싶어.","segs":[{"text":">> 아니","t_ms":1817600},{"text":" 나","t_ms":1817760},{"text":" 강해","t_ms":1817960},{"text":" 보고","t_ms":1818320},{"text":" 싶어.","t_ms":1818519}]},
+    {"t_ms":1819159,"dur_ms":9161,"ja":">> 저기 아나 씨 혹시 모시기 볶음","segs":[{"text":">> 저기","t_ms":1819159},{"text":" 아나","t_ms":1819399},{"text":" 씨","t_ms":1819720},{"text":" 혹시","t_ms":1820320},{"text":" 모시기","t_ms":1821679},{"text":" 볶음","t_ms":1822399}]},
+    {"t_ms":1822720,"dur_ms":5600,"ja":"읽어봤어요? 야곱 야곱 알아요. 야곱","segs":[{"text":"읽어봤어요?","t_ms":1822720},{"text":" 야곱","t_ms":1824000},{"text":" 야곱","t_ms":1824600},{"text":" 알아요.","t_ms":1824919},{"text":" 야곱","t_ms":1825320}]},
+    {"t_ms":1828640,"dur_ms":3919,"ja":">> 쟤 당한 거 쟤 당한 거 똑같이 하고","segs":[{"text":">> 쟤","t_ms":1828640},{"text":" 당한","t_ms":1828760},{"text":" 거","t_ms":1829039},{"text":" 쟤","t_ms":1829799},{"text":" 당한","t_ms":1829960},{"text":" 거","t_ms":1830240},{"text":" 똑같이","t_ms":1830480},{"text":" 하고","t_ms":1830799}]}
+  ]
+}

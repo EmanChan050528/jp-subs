@@ -133,6 +133,46 @@ re-splitting the English by character position, with no regard for word or
 clause boundaries. That is a different defect from the Japanese case, where
 each cue was translated independently — and it is more damaging.
 
+## 7. The ceiling is the ASR, not the translator
+
+First user report of Korean output (2026-09-27): it runs, but the subtitles
+read as nonsense — with the right question attached, which is whether the
+*source* is nonsense too.
+
+**The pipeline was ruled out first.** The `.srt` fixture has no word-level
+`segs`, so it only ever exercised the fallback timing path; about 40% of the
+live track's events carry `segs` and go through `charTimes()` instead, a
+branch Korean had never run. `fixtures/k9QHpWEX2WA_30-30.5min.ko-segs.json`
+covers it now: segmentation is lossless (141 source characters in, 141 out),
+no `>>` survives, every turn is found, no unit is empty or padded.
+
+**The source track is genuinely damaged**, and two pieces of evidence need no
+Korean to read:
+
+*YouTube transliterates where it cannot parse.* The source has 모시기 볶음 and
+YouTube's own English renders it "Moshigi-bokkeum" — a translator falling back
+to spelling a phrase out is announcing that the phrase did not resolve.
+Elsewhere in the same window it produced "Ttuppae-ttubi-ttubae-ttubi-i".
+
+*YouTube silently repairs names, revealing the damage.* The source reads
+방탄수는, which is not the group's name (방탄소년단); YouTube's English says
+"BTS's DNA". It guessed the intended referent from context. Our pipeline sees
+the same corrupted token.
+
+*Both systems fail in the same places.* Two independent translators fed one
+transcript produce nonsense at the same timestamps. That localises the fault
+upstream of either.
+
+**Why this track is the hard case.** A 147-minute multi-speaker VTuber talk
+show is close to worst-case for speech recognition: overlapping speech,
+in-jokes, agency-specific vocabulary, and constant proper nouns. It was chosen
+to match the Japanese fixture's difficulty, and it does.
+
+**What this does and does not establish.** It does not show the Korean prompt
+is good — that still needs a reader. It does show that on this video the
+translator is not the binding constraint, and that a fair comparison is
+against YouTube's output on the same lines rather than against the Korean.
+
 ## Still open
 
 **Scoring the Korean→English accuracy.** Everything above is structural and

@@ -138,6 +138,35 @@ for (const [file, wantCues, wantUnits] of fixtures) {
     withSpaces.length, 0);
 }
 
+console.log("\n--- Korean with word-level timings (the live YouTube path) ---");
+
+// The .srt fixture has no `segs`, so it only ever exercised the fallback
+// timing path. About 40% of the live track's events DO carry segs and go
+// through charTimes() instead — a branch Korean had never run through until
+// a user reported the output looking wrong and it had to be ruled out.
+const segsFixture = JSON.parse(
+  readFileSync("eval/fixtures/k9QHpWEX2WA_30-30.5min.ko-segs.json", "utf8")
+);
+const segUnits = segment(segsFixture.cues);
+
+// Segmentation may re-cut and re-space, but it must never lose or invent a
+// character. Compare with spacing and markers removed.
+const bare = (s) => s.replace(/(?:>>|&gt;&gt;)/g, "").replace(/\s+/g, "");
+check("the timed path loses no text",
+  bare(segUnits.map((u) => u.ja).join("")),
+  bare(segsFixture.cues.map((c) => c.ja).join("")));
+
+check("no >> survives into a unit",
+  segUnits.some((u) => u.ja.includes(">>")), false);
+// Five cues in the fixture open with a marker; each must yield exactly one
+// turn-marked unit.
+check("speaker turns are found on the timed path",
+  segUnits.filter((u) => u.turn).length,
+  segsFixture.cues.filter((c) => /^\s*(?:>>|&gt;&gt;)/.test(c.ja)).length);
+check("no unit starts or ends with whitespace",
+  segUnits.some((u) => u.ja !== u.ja.trim()), false);
+check("no unit is empty", segUnits.some((u) => !u.ja), false);
+
 console.log("\n--- Korean fixture: the numbers the fixes were made for ---");
 
 const ko = parseSubtitles(readFileSync("eval/fixtures/k9QHpWEX2WA_full.ko.srt", "utf8"));
