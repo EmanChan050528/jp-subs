@@ -1,7 +1,7 @@
 // Source-language registry and track selection.
 // Run: node extension/src/languages.test.mjs
 
-import { pickSource, canTranslate, labelOf, SOURCE_PRIORITY } from "./core/languages.js";
+import { pickSource, canTranslate, labelOf, caveatFor, SOURCE_PRIORITY } from "./core/languages.js";
 
 let failed = 0;
 const check = (name, got, want) => {
@@ -34,12 +34,15 @@ check("keeps the track's kind", pickSource([{ lang: "ja", kind: "asr" }])?.kind,
 
 console.log("\n--- capability ---");
 
-// The distinction the whole step rests on: Korean can be extracted but not
-// translated, because extraction is language-agnostic and prompts are not.
 check("Japanese is translatable", canTranslate("ja"), true);
-check("Korean is not translatable yet", canTranslate("ko"), false);
+check("Korean is translatable as of step 3", canTranslate("ko"), true);
 check("an unknown language is not translatable", canTranslate("en"), false);
 check("undefined is not translatable", canTranslate(undefined), false);
+
+// Korean ships with a prompt no Korean reader has scored. The UI is expected
+// to say so, so the caveat has to survive as data rather than a comment.
+check("Japanese carries no caveat", caveatFor("ja"), null);
+check("Korean carries a caveat", typeof caveatFor("ko"), "string");
 
 console.log("\n--- labels ---");
 check("Japanese label", labelOf("ja"), "Japanese");

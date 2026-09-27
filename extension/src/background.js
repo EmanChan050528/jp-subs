@@ -334,7 +334,7 @@ async function translateTab(tabId, { force = false } = {}) {
 
   const { failures, translations: translationsOut, stopped } = await translateUnits(
     units, glossary, backend,
-    { ...config, shouldStop: () => cancelled.has(tabId) },
+    { ...config, lang: sourceLang, shouldStop: () => cancelled.has(tabId) },
     log,
     (partial, done, total) => {
       // Chunks vary in length, so estimate from the mean so far rather than

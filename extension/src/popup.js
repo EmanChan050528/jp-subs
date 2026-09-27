@@ -34,7 +34,9 @@ async function withFeedback(button, busyLabel, fn) {
  * copy is the one that actually gates a run.
  */
 const LANG_LABEL = { ja: "Japanese", ko: "Korean" };
-const TRANSLATABLE = new Set(["ja"]);
+const TRANSLATABLE = new Set(["ja", "ko"]);
+/** Languages whose translation quality has never been independently checked. */
+const UNVALIDATED = new Set(["ko"]);
 
 const bar = $("bar");
 
@@ -459,6 +461,13 @@ async function init() {
         `cannot be translated yet — the prompt for it is not written. ` +
         `"Save transcript only" still works.`,
         "err"
+      );
+    } else if (UNVALIDATED.has(src.lang)) {
+      // Say this rather than presenting every language as equally trusted.
+      show(
+        `${LANG_LABEL[src.lang]} support is new and its quality has not been ` +
+        `independently checked.`,
+        "ok"
       );
     }
   } else {

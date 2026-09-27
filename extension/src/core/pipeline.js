@@ -122,10 +122,13 @@ export async function translateUnits(
   const translations = new Array(units.length).fill("");
   const failures = [];
   const echo = !!options.echo;
+  const lang = options.lang || "ja";
 
   /** Ask for a specific set of lines; write whatever comes back. */
   const request = async (c, lines, label, lastTry = false) => {
-    const raw = await backend(translationPrompt(c, glossary, lines, { echo }), { json: true });
+    const raw = await backend(
+      translationPrompt(c, glossary, lines, { echo, lang }), { json: true }
+    );
     const map = parseJson(raw, label);
     let filled = 0;
     let rejected = 0;

@@ -254,10 +254,14 @@ on a YouTube page.
 - **Subtitles are hidden during ads** and reappear afterwards.
 - **YouTube's own captions are switched off again** after the extension borrows
   them during setup.
-- **It only translates Japanese → English.** On YouTube the video must already
-  have a caption track; elsewhere, you have to supply a subtitle file. Korean
-  captions can be *extracted* with **Save transcript only**, but not yet
-  translated — that work is in progress.
+- **It translates Japanese → English, and now Korean → English.** On YouTube
+  the video must already have a caption track; elsewhere, you have to supply a
+  subtitle file.
+- **Korean is new and unverified.** It works, and the extension will translate
+  a Korean video without being asked twice — but no Korean speaker has checked
+  the output. The Japanese translation rules were each written against a
+  measured failure; the Korean ones were written from the language's structure.
+  Treat Korean results with more suspicion than Japanese ones.
 
 ---
 
@@ -310,10 +314,10 @@ restarted afterwards.
 **"This video has no Japanese or Korean caption track"** — exactly that; there
 is no speech-recognition fallback.
 
-**"Korean ... cannot be translated yet"** — the video's captions are Korean.
-Korean can be *extracted* (**Save transcript only** works on it) but not yet
-translated, because the translation prompt for it is not written. Progress is
-in [`eval/korean-findings.md`](eval/korean-findings.md).
+**"Korean support is new and its quality has not been independently
+checked"** — not an error. The video's captions are Korean and it will
+translate them; the note is there because nobody who reads Korean has scored
+the output. Details in [`eval/korean-findings.md`](eval/korean-findings.md).
 
 **Stuck on "Reading the whole transcript"** — that phase is a single long
 request, so it shows no progress until it completes. The popup counts the

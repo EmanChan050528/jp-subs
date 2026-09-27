@@ -436,8 +436,42 @@ Japanese cannot solve without vision.**
 | Strip `>>` and use it as a turn boundary | `segment()`; units now carry `turn` | ✅ 1.8.0 |
 | Re-tune `maxChars` for Korean density | **measured, not needed** — the 64-char cap binds on 0.7% of Korean units against 6.4% of Japanese ones | ✅ |
 | Language plumbing | `core/languages.js`; interceptor selects by priority | ✅ 1.9.0 |
-| Korean prompt replacing the §3.3 rules | **the actual work** | ⬜ |
+| Korean prompt replacing the §3.3 rules | `core/prompt.js`; five rules, two of them Korean-only | ✅ 1.10.0, **unscored** |
 | Korean evaluation set | blocked on a Korean reader | ⬜ |
+
+### 8.7 The Korean rules, and what they are worth
+
+Japanese has three language-specific rules; Korean has five. Three are the
+same categories — pro-drop, verb-final polarity, fragments — with different
+mechanics. Two are Korean-only:
+
+**Kinship terms are address, not family.** 오빠, 형, 누나, 언니, 선배, -님, -씨
+appear where English uses a name or nothing. Rendering 오빠 as "older brother"
+invents a sibling. Japanese has 先輩 and similar, but nothing as pervasive.
+
+**Speech level carries relationship.** A switch between 반말 and 존댓말 marks
+closeness, deference or irritation. This is the Korean answer to §3.3's
+register rule, and it is grammatically sharper than the Japanese one.
+
+Pro-drop also gets mitigations Japanese cannot offer: the honorific infix
+-시- marks the subject as someone the speaker defers to (so usually not the
+speaker), and the `>>` turn boundaries from §8.3 now reach the model as a list
+of line numbers — sent separately rather than inline, so the echoed source
+copy still matches exactly.
+
+> **These rules are not measured, and the difference matters.** Every Japanese
+> rule traces to a scored failure category. The Korean set is written from the
+> language's structure plus the damage seen in YouTube's own Korean output. No
+> Korean reader has checked a single line of the result. `languages.js` carries
+> an `unvalidated` flag for exactly this, and the popup says so rather than
+> presenting the two languages as equally trustworthy.
+
+> **A near-miss, again.** Parameterising the prompt silently reworded the
+> *Japanese* analysis pass — this file's header says its wording only changes
+> with a fixture run behind it, and there was none. Caught by diffing against
+> the previous commit, not by any test. The Japanese prompts are now
+> snapshot-hashed in `prompt.test.mjs` so the next parameterisation cannot do
+> it quietly.
 
 ### 8.6 Extraction and translation are separate capabilities
 
@@ -507,7 +541,7 @@ Since then: a per-channel glossary that seeds the analysis pass and is editable 
 
 ### Next
 
-6. ⬜ **Korean** (§8). Tested, not built. The mechanical fixes are measured and small; the prompt is the real work. Order within it: the one-character segmentation fixes and hangul detection first, since they are provable against the committed fixture; the prompt second; the evaluation set last, because it is the part that blocks on a reader.
+6. 🟡 **Korean** (§8). Runs, unscored. Segmentation and script predicates in 1.8.0, language plumbing in 1.9.0, the prompt in 1.10.0. What remains is the part that always blocked on a reader: the evaluation set. Korean is usable and labelled unvalidated, which is the honest state — not finished, not hidden.
 
 Not planned: Chinese (§8.5), a pluggable transcript-source interface (§0.2), ahead-of-playhead scheduling (§4.1), live streams (Appendix A).
 

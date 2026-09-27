@@ -36,6 +36,34 @@ that doesn't match its line is rejected and asked for again.
 
 ---
 
+## 1.10.0 — Korean translation
+
+Step 3, and Korean now translates. **Its quality has not been checked by a
+Korean reader**, and the popup says so rather than presenting Korean and
+Japanese as equally trustworthy.
+
+`prompt.js` carries a per-language rule set. Japanese has three
+language-specific rules, Korean five: the same pro-drop, verb-final polarity
+and fragment categories with different mechanics, plus two Korean-only ones.
+Kinship terms (오빠, 형, 누나, 선배, -님) are forms of address, and rendering
+them literally invents siblings. Speech level — 반말 against 존댓말 — carries
+the relationship and belongs in the English tone, not in a note.
+
+Pro-drop gets mitigations Japanese cannot offer: the honorific infix -시- marks
+the subject as someone the speaker defers to, and the `>>` turn boundaries
+found in 1.8.0 now reach the model as a list of line numbers. Sent separately
+rather than inline, so the echoed source copy still matches exactly, and a
+retry that resends part of a chunk does not name lines it never asked for.
+
+Everything language-neutral — output shape, length limits, the bans on
+inventing content and on translating the context — stays in one shared list,
+because duplicating it per language is how two prompts drift apart.
+
+Worth recording: parameterising the prompt silently reworded the *Japanese*
+analysis pass, which this file's own rule forbids without a fixture run behind
+it. Caught by diffing against the previous commit, not by a test. The Japanese
+prompts are now snapshot-hashed so the next parameterisation cannot repeat it.
+
 ## 1.9.0 — language plumbing
 
 Step 2 of the Korean expansion. Still not Korean translation — but the

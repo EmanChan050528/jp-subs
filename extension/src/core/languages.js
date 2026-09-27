@@ -27,13 +27,19 @@ export const LANGUAGES = {
     label: "Korean",
     script: "korean",
     extract: true,
-    translate: false,
-    // Shown wherever a Korean track is found. Step 3 of the Korean work is
-    // what flips `translate` here; see eval/korean-findings.md.
-    pending:
-      "Korean captions can be extracted, but translating them needs a Korean " +
-      "prompt that is not written yet — the Japanese one would produce poor " +
-      "results.",
+    translate: true,
+    /**
+     * Korean translates, but its prompt has never been scored.
+     *
+     * The Japanese rules each trace to a measured failure category. The
+     * Korean ones are written from the language's structure plus the damage
+     * seen in YouTube's own Korean output, and no Korean reader has checked
+     * the result. This flag is what the UI uses to say so rather than
+     * presenting Korean and Japanese as equally trustworthy.
+     */
+    unvalidated:
+      "Korean support is new and its translation quality has not been " +
+      "independently checked.",
   },
 };
 
@@ -49,6 +55,11 @@ export function languageOf(code) {
 
 export function canTranslate(code) {
   return !!LANGUAGES[code]?.translate;
+}
+
+/** A caveat to show alongside a language whose quality is unchecked, or null. */
+export function caveatFor(code) {
+  return LANGUAGES[code]?.unvalidated || null;
 }
 
 export function labelOf(code) {
