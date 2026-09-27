@@ -328,6 +328,7 @@ Full scoring, including the cases this project still gets wrong, is in
 | [`extension/`](extension/) | the Chrome extension — load this one |
 | [`core/`](core/) | command-line version of the translator, for testing |
 | [`eval/`](eval/) | test fixtures and quality scoring |
+| [`tools/`](tools/) | small command-line helpers |
 | [`docs/`](docs/) | notes on translation backends |
 | [`translator-design.md`](translator-design.md) | design decisions and the reasoning behind them |
 | [`CHANGELOG.md`](CHANGELOG.md) | version history — `0.x` is before it worked, `1.x` after |
