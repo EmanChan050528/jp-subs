@@ -17,9 +17,9 @@ Reconciled against the code on 2026-09-27. A checkbox in the stages below means
 | 3 — Translation | **Built.** Gaps: context window sizes never tuned; pro-drop unsolved. |
 | 4 — Pipelining and storage | **Built.** Ahead-of-playhead scheduling deliberately dropped. |
 | 5 — Rendering | **Built.** Gaps: no user styling, no dual JA/EN display. |
-| 6 — Cost and failure | **Largely dissolved** — a local model has no cost. Gap: no resume after a dropped connection. |
+| 6 — Cost and failure | **Largely dissolved** — a local model has no cost. Backend health checked before a run starts (1.11.0). Gap: no resume after a dropped connection. |
 | 7 — Evaluation | **Weakest stage.** Baseline comparison built; human reference parked on a Japanese reader; no prompt-version harness. |
-| 8 — Korean | **Tested, not built.** Premise confirmed, costs measured. |
+| 8 — Korean | **Built** across 1.8.0–1.10.0 and labelled unvalidated. Coherent on clean audio; ASR-limited on wrecked audio (§8.7). Gap: the same one as stage 7, a reader. |
 
 The honest summary: the *pipeline* is complete and the *evaluation* is not.
 Every quality claim in this project is author-scored, and that is the single
@@ -346,6 +346,8 @@ accounting is the bulk of it, and there is no cost.
 - [x] No Japanese caption track → said plainly. There is no ASR fallback to be unavailable, so the message states the real limit rather than implying a retry.
 - [x] `timedtext` returns an empty 200 (§1.1) → detected explicitly and reported as a **refusal, not an empty video**. The "fall through to ASR" half was **dropped**: no ASR path was ever built, so the honest behaviour is to say the track cannot be read.
 - [x] Ollama unreachable or refusing (403 on an unknown origin) → reported with the fix, not a bare status code
+- [x] **Checked before a run starts, not at the first model call** (1.11.0). Ollama is a separate program people close, and the old order extracted an entire transcript before discovering the backend was gone. The probe distinguishes four states — not running, running-but-refused, running-with-no-models, selected-model-missing — because they need four different fixes and collapsing them sent people to reinstall something already running. It runs *after* the cache lookup, so an already-translated video still shows subtitles with Ollama closed.
+- Note, not a task: **there is no "start Ollama" button and there cannot be.** A page cannot launch a local program. Doing it properly needs a native messaging host, which is another program to install — the problem it would be solving. Copying the command is the honest ceiling.
 - [x] Analysis pass fails → degrade to an empty glossary and translate anyway. It used to abort the whole run, so one bad reply cost every subtitle.
 - [x] ~~Translation falls behind the playhead~~ → **dropped, moot.** At 28× real time the playhead never catches up. It is the opposite problem on CPU-only machines, where the whole run finishes before playback starts being worth it — handled by reporting progress honestly, not by tracking a gap.
 - [ ] **Network drops mid-video → resume from the last completed chunk.** Not built, and the current behaviour is deliberate rather than accidental: a partial translation is never cached, because a half-finished run that looks complete on the next visit is worse than one that plainly failed. Resuming properly needs a partial-cache shape that records *which* chunks are done. The retry logic inside a chunk (two re-asks for missing lines) covers the common case; a dropped connection mid-run does not.
@@ -576,7 +578,35 @@ Since then: a per-channel glossary that seeds the analysis pass and is editable 
 
 6. 🟡 **Korean** (§8). Runs, unscored, and **parked here deliberately**. Segmentation and script predicates in 1.8.0, language plumbing in 1.9.0, the prompt in 1.10.0. Confirmed coherent on clean audio, incoherent on a source track the ASR had already wrecked (§8.7). The only remaining step is the evaluation set, which blocks on a Korean reader — the same wall as Japanese (§7), and parked for the same reason. Korean is usable and labelled unvalidated, which is the honest state: not finished, not hidden.
 
-Not planned: Chinese (§8.8), a pluggable transcript-source interface (§0.2), ahead-of-playhead scheduling (§4.1), live streams (Appendix A).
+7. ✅ **Backend health** (1.11.0). Ollama checked before a run starts rather than at the first model call (§6.1).
+
+### State of development
+
+**There is no step 8, and nothing is queued.** Both languages are
+feature-complete against this design. Everything still open falls into one of
+four kinds, and only the last is work anyone could pick up and do:
+
+**Parked on a person.** The evaluation, in both languages (§7, §8.6). This is
+the project's largest weakness and cannot be closed from inside it — every
+quality claim here is author-scored.
+
+**Needs the user's own machine.** The multi-hour MV3 stress test. The README
+publishes "8-hour archive → ~17 minutes" and nobody has run it end to end
+through the extension; if it fails, the fix is an offscreen document.
+
+**Open questions, not tasks.** Whether pro-drop is solvable without vision;
+whether the `>>` turn boundary actually helps; how much forward context is
+enough. These are research, and two of the three need the reader above before
+an answer would mean anything.
+
+**Optional, unasked-for polish.** Subtitle styling and dual JA/EN display
+(§5.1, §5.2), resume after a dropped connection (§6.1), an ASR fallback for
+the ~15% of videos with no caption track (§1.4), a prompt-version comparison
+harness (§7). None of these is blocking anyone, and each would be built on
+request rather than on principle.
+
+Not planned: Chinese (§8.8), a pluggable transcript-source interface (§0.2),
+ahead-of-playhead scheduling (§4.1), live streams (Appendix A).
 
 ---
 
