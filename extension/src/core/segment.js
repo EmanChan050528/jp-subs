@@ -12,14 +12,39 @@
 // units. Fragmented cues get joined; overloaded cues get split. One pass, both
 // shapes.
 
-/** Sentence-final punctuation, allowing trailing quotes/brackets. */
-const SENTENCE_END = /[。．！？!?]+["'」』）\)】〉》]*\s*$/;
+import { joiner } from "./script.js";
 
-/** Split after sentence-final punctuation, keeping the punctuation. */
-const SENTENCE_SPLIT = /(?<=[。．！？!?]+["'」』）\)】〉》]*)/u;
+/**
+ * Sentence-final punctuation, allowing trailing quotes/brackets.
+ *
+ * The ASCII period is in this class, and it matters more than it looks: this
+ * carried the FULLWIDTH period ．(U+FF0E) but not the plain one, so Korean
+ * statements — which use the plain one — never closed a unit. Measured on a
+ * real Korean track that left the median subtitle on screen for 9.0 s; adding
+ * one character took it to 4.4 s. Safe for Japanese: neither Japanese fixture
+ * contains an ASCII period at all, and both segment identically with it.
+ */
+const SENTENCE_END = /[。．！？!?.]+["'」』）\)】〉》]*\s*$/;
+
+/**
+ * Split after sentence-final punctuation, keeping the punctuation.
+ *
+ * `(?!\d)` is the guard the end-anchored rule above does not need. This one
+ * fires mid-text, so without it "3.5" would split into "3." and "5".
+ */
+const SENTENCE_SPLIT = /(?<=[。．！？!?.]+["'」』）\)】〉》]*)(?!\d)/u;
 
 /** A cue that is only a bracketed tag: [音楽], [拍手], [Music]. */
 const TAG_ONLY = /^[\[［][^\]］]*[\]］]$/;
+
+/**
+ * Speaker-change marker. YouTube's Korean auto-captions emit `>>` at a change
+ * of speaker (53% of cues on the measured track); the Japanese track never
+ * does. It is not dialogue, so it is stripped — but it is the only speaker
+ * signal any track gives us, so the boundary it marks is kept on the unit.
+ */
+const TURN_MARKER = /^\s*(?:&gt;&gt;|>>)+\s*/;
+const TURN_MARKER_ANY = /(?:&gt;&gt;|>>)+\s*/g;
 
 export const DEFAULTS = {
   /** Silence (ms) between cues that ends a unit on its own. */
@@ -45,6 +70,33 @@ function charTimes(cue) {
 }
 
 /**
+ * Strip `>>` speaker markers, recording where they were.
+ *
+ * Both the cue text and the word-level `segs` have to be cleaned, or the
+ * per-character timing walk drifts out of step with the text it is timing.
+ * A cue that *began* with a marker starts a new speaker turn; markers found
+ * mid-cue are removed but not treated as boundaries, because the timing data
+ * cannot say where inside the cue the change happened.
+ */
+function stripTurnMarkers(cues) {
+  return cues.map((cue) => {
+    const text = cue.ja || "";
+    if (!TURN_MARKER_ANY.test(text)) return cue;
+    TURN_MARKER_ANY.lastIndex = 0;
+
+    const next = {
+      ...cue,
+      ja: text.replace(TURN_MARKER_ANY, "").trim(),
+      turn: TURN_MARKER.test(text),
+    };
+    if (Array.isArray(cue.segs)) {
+      next.segs = cue.segs.map((s) => ({ ...s, text: (s.text || "").replace(TURN_MARKER_ANY, "") }));
+    }
+    return next;
+  });
+}
+
+/**
  * Explode cues into sentence pieces.
  *
  * Where YouTube gives word-level timings, a piece starts at the real timestamp
@@ -64,6 +116,13 @@ function toPieces(cues, dropTagOnlyCues) {
 
     const cueEnd = cue.t_ms + (cue.dur_ms || 0);
     const timed = charTimes(cue);
+
+    // A cue that opened with `>>` starts a speaker turn at its first piece,
+    // whichever timing path produced it.
+    const before = pieces.length;
+    const markTurn = () => {
+      if (cue.turn && pieces.length > before) pieces[before].startsTurn = true;
+    };
 
     if (timed) {
       // Walk the characters, closing a piece at sentence-final punctuation.
@@ -94,6 +153,7 @@ function toPieces(cues, dropTagOnlyCues) {
         }
       }
       flushPiece(cueEnd);
+      markTurn();
       return;
     }
 
@@ -114,6 +174,8 @@ function toPieces(cues, dropTagOnlyCues) {
         endsSentence: SENTENCE_END.test(part),
       });
     }
+
+    markTurn();
   });
 
   return pieces;
@@ -125,7 +187,7 @@ function toPieces(cues, dropTagOnlyCues) {
  */
 export function segment(cues, options = {}) {
   const { gapMs, maxChars, dropTagOnlyCues } = { ...DEFAULTS, ...options };
-  const pieces = toPieces(cues, dropTagOnlyCues);
+  const pieces = toPieces(stripTurnMarkers(cues), dropTagOnlyCues);
 
   const units = [];
   let current = null;
@@ -138,7 +200,13 @@ export function segment(cues, options = {}) {
   for (const piece of pieces) {
     if (current) {
       const silence = piece.start_ms - current.end_ms;
-      if (silence >= gapMs || current.ja.length + piece.text.length > maxChars) flush();
+      // A speaker change always ends a unit. Merging two speakers into one
+      // subtitle attributes one person's words to the other, which is a worse
+      // error than a short unit.
+      if (piece.startsTurn || silence >= gapMs ||
+          current.ja.length + piece.text.length > maxChars) {
+        flush();
+      }
     }
 
     if (!current) {
@@ -147,10 +215,13 @@ export function segment(cues, options = {}) {
         start_ms: piece.start_ms,
         end_ms: piece.end_ms,
         cue_index: [],
+        turn: !!piece.startsTurn,
       };
     }
 
-    current.ja += piece.text;
+    // Spacing is per-boundary, not unconditional. Concatenating outright is
+    // correct for Japanese and welds Korean words together.
+    current.ja += joiner(current.ja, piece.text) + piece.text;
     current.end_ms = Math.max(current.end_ms, piece.end_ms);
     if (!current.cue_index.includes(piece.cue_index)) {
       current.cue_index.push(piece.cue_index);

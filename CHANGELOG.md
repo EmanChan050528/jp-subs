@@ -36,6 +36,34 @@ that doesn't match its line is rejected and asked for again.
 
 ---
 
+## 1.8.0 — Korean groundwork
+
+Step 1 of the Korean expansion: the mechanical fixes, all provable against the
+committed fixtures without knowing Korean. Not Korean support — the prompt is
+still Japanese and the extension still only requests a `ja` track.
+
+`SENTENCE_END` carried the fullwidth period but not the ASCII one Korean uses,
+so Korean statements never closed a unit. One character, plus a `(?!\d)` guard
+on the split rule so "3.5" does not break in half. Korean units over twelve
+seconds on screen fell from 207 to 18, and the median from 9.0 s to 4.1 s.
+
+The `CJK` regex was answering two questions that only have the same answer for
+Japanese — "does this boundary need a space?" and "is this the source
+language?" Hangul is a source script written *with* spaces, so it splits into
+two predicates in `core/script.js`.
+
+`>>` speaker markers are stripped and turned into unit boundaries; units carry
+`turn`. 2,050 of them on the Korean fixture, none on either Japanese one. This
+is the only speaker signal any caption track provides.
+
+`maxChars` was expected to need re-tuning and does not: the 64-char cap binds
+on 0.7% of Korean units against 6.4% of Japanese ones.
+
+A near-miss is recorded in the design doc. The first spacing rule kept Japanese
+unit counts at exactly 78 and 235 while changing the text underneath —
+「もう1回」 became 「もう 1回」. Japanese embeds ASCII without spaces. The tests
+now assert on content rather than cardinality, because cardinality passed.
+
 ## 1.7.0 — subtitle files
 
 Japanese `.srt`/`.vtt` in, English `.srt` out, in its own tab. This is how the

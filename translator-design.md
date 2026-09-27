@@ -428,15 +428,34 @@ Japanese cannot solve without vision.**
 
 ### 8.4 What it would cost
 
-| Change | Size |
-|---|---|
-| ASCII period in `SENTENCE_END` / `SENTENCE_SPLIT` | one character each |
-| Join cues with a space for spaced languages | small, in `segment()` |
-| Hangul in the `CJK` class | one range |
-| Strip `>>` and use it as a turn boundary | small, and a real quality win |
-| Re-tune `maxChars` for Korean density | needs a fixture run |
-| Korean prompt replacing the §3.3 rules | **the actual work** |
-| Korean evaluation set | blocked on a Korean reader |
+| Change | Size | State |
+|---|---|---|
+| ASCII period in `SENTENCE_END` / `SENTENCE_SPLIT` | one character each, plus a `(?!\d)` guard so `3.5` does not split | ✅ 1.8.0 |
+| Join cues with a space for spaced languages | `core/script.js` | ✅ 1.8.0 |
+| Hangul detection | `core/script.js` | ✅ 1.8.0 |
+| Strip `>>` and use it as a turn boundary | `segment()`; units now carry `turn` | ✅ 1.8.0 |
+| Re-tune `maxChars` for Korean density | **measured, not needed** — the 64-char cap binds on 0.7% of Korean units against 6.4% of Japanese ones | ✅ |
+| Language plumbing (`lang=ja` is hardcoded in `interceptor.js`) | step 2 | ⬜ |
+| Korean prompt replacing the §3.3 rules | **the actual work** | ⬜ |
+| Korean evaluation set | blocked on a Korean reader | ⬜ |
+
+**Result of step 1**, measured on the committed fixtures:
+
+| | Korean before | Korean after | Japanese |
+|---|---|---|---|
+| Units | 1,238 | 3,580 | unchanged |
+| Median time on screen | 9.0 s | 4.1 s | unchanged |
+| Units over 12 s | 207 | 18 | unchanged |
+| Turn-marked units | — | 2,050 | n/a |
+
+> **The near-miss worth recording.** The first version of the spacing rule
+> added a space unless *both* sides were no-space script. Unit counts stayed
+> at exactly 78 and 235, so the Japanese regression check passed — and the
+> text had changed anyway: 「もう1回」 became 「もう 1回」, 「YouTubeで」 became
+> 「YouTube で」. Japanese embeds ASCII without spaces, so one side being kana
+> or Han is enough to mean "no space here". Nine units across the two
+> fixtures, invisible to a count-based check. The test suite now asserts on
+> content, not just cardinality.
 
 ### 8.5 Chinese is not next
 

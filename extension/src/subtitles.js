@@ -21,7 +21,14 @@ import { loadSettings, formatDuration } from "./shared.js";
 const $ = (id) => document.getElementById(id);
 
 /** Below this proportion of Japanese characters, the file is probably wrong. */
-const MIN_CJK_RATIO = 0.2;
+const MIN_JAPANESE_RATIO = 0.2;
+
+const SCRIPT_LABEL = {
+  japanese: "Japanese",
+  korean: "Korean (not supported yet)",
+  other: "not Japanese or Korean",
+  unknown: "empty",
+};
 
 let cues = null;
 let fileName = "";
@@ -98,17 +105,28 @@ function loadSubtitles(name, text) {
     ["File", name],
     ["Lines", String(info.cues)],
     ["Length", formatDuration(info.durationMs)],
-    ["Japanese", `${Math.round(info.cjkRatio * 100)}% of characters`],
+    ["Script", SCRIPT_LABEL[info.script] || info.script],
+    ["Japanese", `${Math.round(info.japanese * 100)}% of characters`],
   ]);
 
   $("facts").hidden = false;
   $("controls").hidden = false;
   $("context").value = name.replace(/\.[^.]+$/, "").replace(/[._]+/g, " ");
 
-  if (info.cjkRatio < MIN_CJK_RATIO) {
+  // Say which language was found, not merely that it is not Japanese. A
+  // Korean file is a real subtitle file and the reader is not confused; the
+  // tool is the thing with the limitation.
+  if (info.script === "korean") {
+    message(
+      `This looks like Korean, not Japanese. Korean is not supported yet — ` +
+      `translating it would use the Japanese prompt and produce poor results. ` +
+      `Support is in progress; see eval/korean-findings.md.`,
+      "err"
+    );
+  } else if (info.japanese < MIN_JAPANESE_RATIO) {
     message(
       `This file does not look like Japanese — only ` +
-      `${Math.round(info.cjkRatio * 100)}% of its characters are. Translating ` +
+      `${Math.round(info.japanese * 100)}% of its characters are. Translating ` +
       `it anyway will take just as long and produce nothing useful. If the ` +
       `text looks like garbage, the file is probably Shift-JIS; re-save it as ` +
       `UTF-8 and load it again.`,

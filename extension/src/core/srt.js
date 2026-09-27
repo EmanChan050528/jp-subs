@@ -10,6 +10,8 @@
 // long: subtitles are read at speed, so an over-long line gets split across two
 // display lines rather than being allowed to run off the screen.
 
+import { joinPieces, detectScript } from "./script.js";
+
 const MAX_LINE_CHARS = 42;
 // Two lines is the subtitle convention, but ~6% of translations exceed what
 // two lines can hold (Japanese expands 2-4x into English). Jamming the
@@ -83,15 +85,6 @@ const ASS_OVERRIDE = /\{\\[^}]*\}/g;
 
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 
-/**
- * Japanese has no inter-word spaces, so lines wrapped by the subtitler must be
- * rejoined with nothing. Doing that unconditionally would instead run English
- * words together, so the decision is made per boundary.
- *
- * Escapes, not literal characters: these ranges are invisible in an editor and
- * a re-encode would corrupt them silently.
- */
-const CJK = /[　-ヿ㐀-䶿一-鿿＀-￯]/;
 
 function toMs(hours, minutes, seconds, fraction) {
   // "5" means 500 ms, not 5 ms — the fraction is a decimal, not a count.
@@ -106,13 +99,9 @@ function decodeEntities(text) {
     .replace(/&(amp|lt|gt|quot|apos|nbsp);/g, (_, name) => ENTITIES[name]);
 }
 
-function joinLines(lines) {
-  return lines.reduce((acc, line) => {
-    if (!acc) return line;
-    const glue = CJK.test(acc.slice(-1)) && CJK.test(line.slice(0, 1)) ? "" : " ";
-    return acc + glue + line;
-  }, "");
-}
+// Spacing is decided per boundary in script.js: Japanese rejoins with
+// nothing, Korean and Latin keep their spaces.
+const joinLines = joinPieces;
 
 /**
  * Rolling captions — the normal shape of an auto-generated track pulled out of
@@ -204,20 +193,28 @@ export function parseSubtitles(text) {
   return collapseRolling(cues);
 }
 
-/** Enough to tell the reader whether the file they picked is the right one. */
+/**
+ * Enough to tell the reader whether the file they picked is the right one.
+ *
+ * This reports WHICH source script was found, not just how Japanese the file
+ * looks. A Korean file used to score 0 and be reported as the wrong language,
+ * which is a useless thing to tell someone holding a perfectly good Korean
+ * subtitle file — the accurate answer is "Korean, which this does not
+ * translate yet".
+ */
 export function describeCues(cues) {
-  const chars = cues.reduce((n, c) => n + c.ja.length, 0);
-  const cjk = cues.reduce(
-    (n, c) => n + [...c.ja].filter((ch) => CJK.test(ch)).length,
-    0
-  );
+  const text = cues.map((c) => c.ja).join("");
+  const { script, ratio, japanese, korean } = detectScript(text);
   const last = cues.length ? cues.at(-1).t_ms + cues.at(-1).dur_ms : 0;
   return {
     cues: cues.length,
-    chars,
+    chars: text.length,
     durationMs: last,
-    // Proportion of Japanese characters. A wrong-language file is otherwise
-    // only discovered after a long and completely useless run.
-    cjkRatio: chars ? cjk / chars : 0,
+    /** "japanese" | "korean" | "other" | "unknown" */
+    script,
+    /** Share of characters belonging to `script`. */
+    ratio,
+    japanese,
+    korean,
   };
 }

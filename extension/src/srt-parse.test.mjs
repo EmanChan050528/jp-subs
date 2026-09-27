@@ -197,17 +197,19 @@ for (const c of cases) {
 // describeCues drives the "this file is not Japanese" warning, so its ratio
 // matters as much as the parse does.
 const ratioCases = [
-  { name: "pure Japanese scores 1", cues: [{ ja: "こんにちは", t_ms: 0, dur_ms: 1 }], min: 0.99 },
-  { name: "pure English scores 0", cues: [{ ja: "hello there", t_ms: 0, dur_ms: 1 }], max: 0.01 },
+  { name: "pure Japanese is detected as japanese", cues: [{ ja: "こんにちは", t_ms: 0, dur_ms: 1 }], script: "japanese", min: 0.99 },
+  { name: "pure Korean is detected as korean", cues: [{ ja: "안녕하세요 여러분", t_ms: 0, dur_ms: 1 }], script: "korean", min: 0.99 },
+  { name: "pure English is neither", cues: [{ ja: "hello there", t_ms: 0, dur_ms: 1 }], script: "other" },
+  { name: "mixed JA/EN still reads as japanese", cues: [{ ja: "配信 start です", t_ms: 0, dur_ms: 1 }], script: "japanese" },
 ];
 
 for (const c of ratioCases) {
-  const { cjkRatio } = describeCues(c.cues);
-  const ok = (c.min === undefined || cjkRatio >= c.min) && (c.max === undefined || cjkRatio <= c.max);
+  const got = describeCues(c.cues);
+  const ok = got.script === c.script && (c.min === undefined || got.ratio >= c.min);
   if (ok) console.log(`  ok   ${c.name}`);
   else {
     failed += 1;
-    console.log(`  FAIL ${c.name} — ratio ${cjkRatio}`);
+    console.log(`  FAIL ${c.name} — script ${got.script}, ratio ${got.ratio.toFixed(2)}`);
   }
 }
 
