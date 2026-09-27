@@ -84,16 +84,63 @@ Fetching the `ko` track's `baseUrl` from the watch page returns HTTP 200 with a
 zero-byte body — the same silent refusal recorded in §0.3.0. The interceptor
 approach transfers without new research.
 
+## 6. The premise holds: YouTube is bad at Korean, and visibly so
+
+yt-dlp cannot fetch the `en` track — repeated attempts return HTTP 429, because
+it requests translated captions without a proof-of-origin token and that path
+is throttled hard. The `ko-orig` track downloads fine, so this is not an IP
+block.
+
+It is reachable through the player instead, using this project's own §0.3.0
+finding: hook `fetch` on the watch page, let the player request its own
+captions, and rewrite the captured URL. `sparams` covers only
+`ip,ipbits,expire,v,ei,caps,opi,exp,xoaf`, so `tlang` is unsigned and can be
+set to `en` on a URL that already carries a valid `pot`. One request, 7,470
+events, no rate limit.
+
+The 30:00–40:00 window — matching how the Japanese baseline was built — is
+16,869 bytes, SHA-256 `692d4a86dd679d966fe50f9bb5f1d3f123aadf7a130815d8f98228f1433092fb`.
+It is **not yet committed**: it has to arrive byte-exact rather than
+transcribed, so it needs a file write from the browser session that fetched it.
+The observations below were read from that text directly.
+
+**Most of the damage is legible without reading Korean**, because it is
+structural damage to the English:
+
+**Negation is severed mid-word.** YouTube splits the contraction across a cue
+boundary — one cue ends `...first of all, do` and the next begins `n't dress
+hip...`. This happens at least six times in ten minutes (`was`/`n't he`,
+`I do`/`n't think I'll cry`, `I have`/`n't grown yet`, `would`/`n't it be
+better`). A viewer reading the first cue at speed takes the opposite meaning.
+This is Japanese failure category 1, but worse: in Japanese the polarity was
+stranded in the *next cue*; here it is stranded mid-token.
+
+**Punctuation arrives as its own subtitle.** Cues consisting of nothing but
+`?` or `.` appear five times in the window. They are not translations of
+anything.
+
+**Proper nouns are unstable.** The agency name (스텔라이브 / StelLive) is
+rendered at least four different ways in ten minutes — as *Stellai*,
+*Stellaive*, *Stan Live*, and split across two cues as *Stellar.* / *cadet.*
+This is precisely what the per-channel glossary exists to fix, and it is the
+easiest win available.
+
+**Fragment cues carry no content**: single words like *Is*, *It's*, *huh*
+stranded as standalone subtitles.
+
+The mechanism looks like YouTube translating a cue pair jointly and then
+re-splitting the English by character position, with no regard for word or
+clause boundaries. That is a different defect from the Japanese case, where
+each cue was translated independently — and it is more damaging.
+
 ## Still open
 
-**The comparison against YouTube's own English.** The `en` auto-translated
-track for this video is available (`yt-dlp --list-subs` lists `en`, `ko`,
-`ko-orig`) but repeated fetches drew HTTP 429. It needs a retry after a
-cooldown.
-
-**Scoring.** Even with both tracks, judging the output needs a Korean reader —
-the same wall the Japanese evaluation hit. The structural findings above are
-all countable and need no language knowledge; quality is not.
+**Scoring the Korean→English accuracy.** Everything above is structural and
+needed no Korean. Judging whether a given line *means* the right thing still
+needs a Korean reader — the same wall the Japanese evaluation hit. What has
+changed is that the premise no longer depends on that judgement: the
+fragmentation, the severed negations and the unstable names are defects in the
+English on their own terms.
 
 ## Cost estimate, now grounded
 
