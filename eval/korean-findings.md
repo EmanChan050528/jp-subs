@@ -173,6 +173,48 @@ is good — that still needs a reader. It does show that on this video the
 translator is not the binding constraint, and that a fair comparison is
 against YouTube's output on the same lines rather than against the Korean.
 
+## 8. Confirmed on the easy profile
+
+The control ran on `nOdLfDOAMvg` (슈카월드, 28 min, single speaker, clean
+audio, semi-scripted). **Output was coherent**, and held up against YouTube's
+English dub of the same video.
+
+Read against §7, that closes the question it was designed to answer:
+
+| | StelLive (hard) | 슈카월드 (easy) |
+|---|---|---|
+| Audio | 147 min, multi-speaker, overlapping | 28 min, one speaker, clean |
+| Source ASR | visibly corrupted | clean |
+| Our output | nonsense | coherent |
+
+Same prompt, same pipeline, opposite results, and the variable that moved was
+the input. **The translator is not the constraint; the speech recognition is.**
+Expected quality for Korean therefore tracks audio conditions far more than it
+tracks anything in this project.
+
+### Two caveats on that result
+
+**The dub is not the project's baseline, and it is a harder one.** YouTube's
+auto-dubbing is a separate system from its auto-translated captions. It works
+from whole utterances rather than caption cues, so it never suffers the
+cue-fragmentation failure that §7 and the whole §3.2 design exist to fix.
+Matching it is a stronger result than matching the captions — but it is not
+the comparison `eval/README.md` is built around, and 슈카월드 was flagged in
+`korean-candidates.md` as unsuitable for baseline use for exactly this reason:
+it carries its own `en-US` and `id` tracks, so the comparison is not
+like-for-like.
+
+**Coherent is not accurate, and the gap between them is the whole problem.**
+The failure this project exists to fix produces *fluent* wrong English, not
+obvious nonsense. The measured Japanese example — 「あ、寝ちゃった。」 rendered
+"Oh, I fell asleep" when the thing that fell asleep is on screen — reads
+perfectly and is wrong. A reader who does not know the source language cannot
+distinguish a correct line from a confidently misattributed one.
+
+So this result establishes that the Korean pipeline **produces well-formed
+English from clean input**. It does not establish accuracy, and the
+`unvalidated` flag stays until a Korean reader scores it.
+
 ## Still open
 
 **Scoring the Korean→English accuracy.** Everything above is structural and
